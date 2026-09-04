@@ -1,259 +1,744 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Painel Pneumático TCC - PneumaticSys</title>
-  
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PneumaticSys - Gestão Completa</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .bg-sidebar { background-color: #0f172a; }
+        .bg-main { background-color: #f8fafc; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
 </head>
-<body class="bg-[#f8fafc] text-slate-800 font-sans antialiased">
-  <div id="root"></div>
+<body class="flex h-screen bg-main overflow-hidden text-slate-800">
 
-  <script type="text/babel">
-    const { useState } = React;
-
-    const WindIcon = () => (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12.8 19.6A2 2 0 1 0 14 16H2" /><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2" /><path d="M9.8 4.4A2 2 0 1 1 11 8H2" />
-      </svg>
-    );
-
-    const PulseIcon = () => (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-      </svg>
-    );
-
-    const PowerIcon = () => (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" />
-      </svg>
-    );
-
-    const DashboardIcon = () => (
-      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>
-      </svg>
-    );
-
-    const AlertIcon = () => (
-      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-    );
-
-    const CheckCircleIcon = () => (
-      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
-      </svg>
-    );
-
-    const LogOutIcon = () => (
-      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-      </svg>
-    );
-
-    function App() {
-      const [currentNav, setCurrentNav] = useState('dashboard');
-      const [leakDetected, setLeakDetected] = useState(false);
-      const [rooms, setRooms] = useState([
-        { id: 1, name: 'Laboratório 1', reservedBy: 'Prof. Silva', active: false },
-        { id: 2, name: 'Laboratório 2', reservedBy: 'Prof. Souza', active: false },
-        { id: 3, name: 'Oficina Mecânica', reservedBy: null, active: false },
-        { id: 4, name: 'Sala de Projetos', reservedBy: null, active: false },
-      ]);
-
-      const toggleLeakSimulation = () => {
-        setLeakDetected(!leakDetected);
-      };
-
-      const activeRoomsCount = rooms.filter(r => r.active).length;
-
-      return (
-        <div className="flex h-screen w-screen overflow-hidden bg-[#f1f5f9]">
-          
-          <aside className="w-64 bg-[#0a0f1d] text-white flex flex-col justify-between flex-shrink-0">
-            <div>
-              <div className="p-6 flex items-center gap-3 border-b border-slate-800/60">
-                <div className="text-blue-400">
-                  <WindIcon />
-                </div>
-                <h1 className="font-bold text-xl tracking-tight">PneumaticSys</h1>
-              </div>
-
-              <div className="p-4 space-y-6">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">
-                    Navegação
-                  </p>
-                  <nav className="space-y-1">
-                    <button
-                      onClick={() => setCurrentNav('dashboard')}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        currentNav === 'dashboard' 
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' 
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                      }`}
-                    >
-                      <DashboardIcon />
-                      Dashboard Geral
-                    </button>
-
-                    <button
-                      onClick={() => setCurrentNav('salas')}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        currentNav === 'salas' 
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' 
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                      }`}
-                    >
-                      <PowerIcon />
-                      Controle de Salas
-                    </button>
-
-                    <button
-                      onClick={() => setCurrentNav('alertas')}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        currentNav === 'alertas' 
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' 
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                      }`}
-                    >
-                      <AlertIcon />
-                      Alertas
-                    </button>
-                  </nav>
-                </div>
-
-                <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
-                  <p className="text-xs text-slate-400 font-medium">Simulação de Testes (TCC)</p>
-                  <button
-                    onClick={toggleLeakSimulation}
-                    className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all border ${
-                      leakDetected 
-                        ? 'bg-red-600 text-white border-red-500 hover:bg-red-700 animate-pulse' 
-                        : 'bg-red-950/40 text-red-300 border-red-900/60 hover:bg-red-900/50'
-                    }`}
-                  >
-                    {leakDetected ? 'Cancelar Vazamento' : 'Simular Vazamento de Ar'}
-                  </button>
-                </div>
-              </div>
+    <!-- TELA DE LOGIN -->
+    <div id="tela-login" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center">
+            <div class="flex justify-center items-center space-x-3 mb-6">
+                <i class="fa-solid fa-wind text-blue-600 text-3xl"></i>
+                <span class="text-3xl font-bold tracking-wide text-slate-800">PneumaticSys</span>
             </div>
-
-            <div className="p-4 border-t border-slate-800/80 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm text-white">
-                  P
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-100 leading-tight">Prof. Souza</p>
-                  <p className="text-xs text-slate-400">Professor</p>
-                </div>
-              </div>
-              <button className="text-slate-400 hover:text-red-400 p-1.5 transition-colors flex items-center gap-1 text-xs font-semibold">
-                <LogOutIcon />
-                <span>Sair</span>
-              </button>
-            </div>
-          </aside>
-
-          <main className="flex-1 overflow-y-auto p-8 space-y-8">
             
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard</h2>
-              
-              <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                leakDetected 
-                  ? 'bg-red-50 text-red-700 border-red-200' 
-                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              }`}>
-                {leakDetected ? <AlertIcon /> : <CheckCircleIcon />}
-                <span>{leakDetected ? 'ALERTA DE VAZAMENTO ATIVO' : 'Linha de Ar Normal'}</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-5">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-                  <PulseIcon />
+            <p class="text-sm text-slate-500 mb-6">Insira suas credenciais para acessar o sistema.</p>
+            
+            <form id="form-login" onsubmit="realizarLogin(event)" class="space-y-4">
+                <div>
+                    <input type="text" id="input-usuario" placeholder="Usuário" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-0.5">Pressão Linha Principal</p>
-                  <p className="text-2xl font-black text-slate-800">
-                    {leakDetected ? '3.2' : '8.5'} <span className="text-sm font-bold text-slate-400">BAR</span>
-                  </p>
+                    <input type="password" id="input-senha" placeholder="Senha (padrão: 123)" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
                 </div>
-              </div>
+                
+                <div id="msg-erro-login" class="hidden text-red-500 text-sm font-medium">Usuário ou senha incorretos!</div>
 
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-5">
-                <div className="w-12 h-12 rounded-2xl bg-cyan-50 text-cyan-600 flex items-center justify-center flex-shrink-0">
-                  <WindIcon />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-0.5">Fluxo Estimado</p>
-                  <p className="text-2xl font-black text-slate-800">
-                    {leakDetected ? '340' : '120'} <span className="text-sm font-bold text-slate-400">L/min</span>
-                  </p>
-                </div>
-              </div>
+                <button type="submit" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-blue-600/30">
+                    Entrar no Sistema
+                </button>
+            </form>
 
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-5">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
-                  <PowerIcon />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-0.5">Salas em Uso</p>
-                  <p className="text-2xl font-black text-slate-800">
-                    {activeRoomsCount} <span className="text-sm font-bold text-slate-400">/ 4</span>
-                  </p>
-                </div>
-              </div>
-
+            <div class="mt-6 text-xs text-slate-400 text-left bg-slate-50 p-3 rounded">
+                <strong>Logins de teste (Senha: 123):</strong><br>
+                Coordenador: <em>coordenador</em><br>
+                Professores: <em>souza</em>, <em>silva</em>, <em>mendes</em><br>
+                Aluno: <em>aluno</em>
             </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
-              <div className="flex items-center gap-2 text-slate-800 font-bold text-base">
-                <div className="text-blue-600">
-                  <WindIcon />
-                </div>
-                <h3>Monitoramento Geral dos Laboratórios</h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {rooms.map((room) => (
-                  <div key={room.id} className="p-4 bg-slate-50/70 border border-slate-200/70 rounded-xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold text-slate-800 text-sm">{room.name}</h4>
-                      <span className={`w-2.5 h-2.5 rounded-full ${room.active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium">
-                        {room.reservedBy ? `Reservada: ${room.reservedBy}` : 'Livre para uso'}
-                      </p>
-                      <p className={`text-xs font-semibold mt-1 ${room.active ? 'text-emerald-600' : 'text-slate-400'}`}>
-                        {room.active ? 'Ar Ativado' : 'Ar Desativado'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </main>
         </div>
-      );
-    }
+    </div>
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
+    <!-- APP PRINCIPAL -->
+    <div id="app-container" class="flex w-full h-full hidden">
+        
+        <!-- SIDEBAR -->
+        <aside class="w-64 bg-sidebar text-white flex flex-col justify-between">
+            <div>
+                <div class="p-6 flex items-center space-x-3">
+                    <i class="fa-solid fa-wind text-blue-400 text-xl"></i>
+                    <span class="text-xl font-bold tracking-wide">PneumaticSys</span>
+                </div>
+                <div class="px-4 text-xs font-semibold text-slate-400 mb-2 mt-4 uppercase">Navegação</div>
+                <nav class="space-y-1 px-3" id="menu-navegacao"></nav>
+
+                <div class="px-4 mt-8" id="box-emergencia" style="display: none;">
+                    <div class="bg-red-900/40 border border-red-700 rounded-lg p-4 text-center">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl mb-2"></i>
+                        <div class="text-xs text-slate-300 mb-3">Parada de Emergência</div>
+                        <button onclick="acionarEmergencia()" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-bold transition-colors">
+                            TRAVAR SISTEMA
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-700 flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div id="user-avatar" class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm"></div>
+                    <div>
+                        <div id="user-name" class="text-sm font-bold"></div>
+                        <div id="user-role" class="text-xs text-slate-400 uppercase"></div>
+                    </div>
+                </div>
+                <button onclick="logout()" class="text-slate-400 hover:text-red-400"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 flex flex-col overflow-y-auto relative">
+            
+            <!-- ALERTA DE EMERGÊNCIA GLOBAL -->
+            <div id="banner-emergencia" class="hidden bg-red-600 text-white p-4 flex justify-between items-center shadow-md">
+                <div class="flex items-center space-x-3">
+                    <i class="fa-solid fa-skull-crossbones text-2xl animate-pulse"></i>
+                    <div>
+                        <h3 class="font-bold text-lg">SISTEMA BLOQUEADO - FALHA CRÍTICA</h3>
+                        <p class="text-sm" id="texto-tempo-falha">Tempo em falha: Calculando...</p>
+                    </div>
+                </div>
+                <button id="btn-resolver-falha" onclick="resolverEmergencia()" class="hidden bg-white text-red-700 px-4 py-2 rounded font-bold hover:bg-slate-100">
+                    FALHA RESOLVIDA (DESTRAVAR)
+                </button>
+            </div>
+
+            <header class="flex justify-between items-center p-8 pb-4">
+                <h1 id="titulo-pagina" class="text-2xl font-bold text-slate-800">Dashboard</h1>
+                <div id="status-linha-ar" class="flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm">
+                    <i class="fa-solid fa-pipe-valve" id="icone-status-ar"></i>
+                    <span id="texto-status-ar">Tubulação Normal</span>
+                </div>
+            </header>
+
+            <!-- TELA: DASHBOARD GERAL -->
+            <div id="tela-dashboard" class="tela-conteudo p-8 pt-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white rounded-xl border border-slate-100 p-6 flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i class="fa-solid fa-wave-square text-xl"></i></div>
+                        <div><div class="text-sm text-slate-500">Pressão Linha Principal</div><div class="text-2xl font-bold" id="dash-pressao">8.5 <span class="text-sm font-normal">BAR</span></div></div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-100 p-6 flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-full bg-cyan-50 flex items-center justify-center text-cyan-500"><i class="fa-solid fa-wind text-xl"></i></div>
+                        <div><div class="text-sm text-slate-500">Fluxo Total Estimado</div><div class="text-2xl font-bold" id="dash-fluxo">120 <span class="text-sm font-normal">L/min</span></div></div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-100 p-6 flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600"><i class="fa-solid fa-magnifying-glass-chart text-xl"></i></div>
+                        <div><div class="text-sm text-slate-500">Status de Vazamento</div><div class="text-xl font-bold text-green-600" id="dash-vazamento">Nenhum Detectado</div></div>
+                    </div>
+                </div>
+                <h2 class="text-lg font-bold mb-4"><i class="fa-solid fa-building text-blue-600 mr-2"></i>Salas e Laboratórios</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="grid-salas-dashboard"></div>
+            </div>
+
+            <!-- TELA: ATRIBUIÇÃO DE SALAS (COORDENADOR) -->
+            <div id="tela-atribuicao" class="tela-conteudo p-8 pt-4 hidden">
+                <div class="bg-white rounded-xl border border-slate-100 p-6">
+                    <h3 class="text-xl font-bold mb-6">Designar Professores às Salas</h3>
+                    <div class="space-y-4" id="lista-atribuicao"></div>
+                </div>
+            </div>
+
+            <!-- TELA: MINHA SALA (PROFESSOR) -->
+            <div id="tela-minha-sala" class="tela-conteudo p-8 pt-4 hidden">
+                <div id="aviso-sem-sala" class="hidden bg-yellow-50 text-yellow-800 p-4 rounded-lg border border-yellow-200">
+                    Você não foi designado a nenhuma sala pelo Coordenador no momento. Aguarde a atribuição.
+                </div>
+                <div id="conteudo-minha-sala" class="hidden">
+                    <div class="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-100 mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800" id="titulo-sala-prof">Laboratório X</h2>
+                            <p class="text-slate-500">Controle Mestre e Bancadas</p>
+                        </div>
+                        <div class="flex space-x-4 items-center">
+                            <button id="btn-master-valve" onclick="toggleMasterValve()" class="px-6 py-3 rounded-lg font-bold text-white bg-slate-400 transition-colors">
+                                <i class="fa-solid fa-power-off mr-2"></i><span id="texto-master-valve">Liberar Ar para a Sala</span>
+                            </button>
+                            <button onclick="encerrarAtividade()" class="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">
+                                Encerrar & Gerar Relatório
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="aviso-master-off" class="text-center p-8 bg-slate-50 text-slate-500 rounded-lg border border-dashed border-slate-300 mb-6">
+                        A válvula principal da sala está fechada. Libere o ar acima para controlar as bancadas.
+                    </div>
+
+                    <div id="grid-bancadas-prof" class="grid grid-cols-1 lg:grid-cols-2 gap-6 hidden"></div>
+                </div>
+            </div>
+
+            <!-- TELA: RELATÓRIOS (COORDENADOR) -->
+            <div id="tela-relatorios" class="tela-conteudo p-8 pt-4 hidden">
+                <div class="bg-white rounded-xl border border-slate-100 p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-bold">Relatórios de Atividades Encerradas</h3>
+                        <button onclick="baixarRelatorioCSV()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center shadow transition-colors text-sm">
+                            <i class="fa-solid fa-download mr-2"></i> Baixar Relatório (CSV)
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-600">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr><th>Data</th><th>Prof / Sala</th><th>Tempo de Uso da Sala</th><th>Bancadas Utilizadas</th><th>Status de Falhas</th></tr>
+                            </thead>
+                            <tbody id="tabela-relatorios"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TELA: ALUNO -->
+            <div id="tela-aluno" class="tela-conteudo p-8 pt-4 hidden">
+                <div class="bg-white p-6 rounded-xl shadow border border-slate-100 text-center">
+                    <h2 class="text-xl font-bold mb-4">Visão do Aluno - Bancada 1 (Lab 1)</h2>
+                    <div class="flex justify-center space-x-8 mb-6">
+                        <div class="p-4 bg-slate-50 rounded-lg">
+                            <p class="text-slate-500 text-sm">Pressão Atual</p>
+                            <p class="text-2xl font-bold text-blue-600" id="aluno-bar">0.0 BAR</p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-lg">
+                            <p class="text-slate-500 text-sm">Tempo Restante</p>
+                            <p class="text-2xl font-bold text-indigo-600" id="aluno-timer">--:--</p>
+                        </div>
+                    </div>
+                    <canvas id="chart-aluno" height="100"></canvas>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // --- API DE NOTIFICAÇÕES (DESKTOP) ---
+        function solicitarPermissaoNotificacao() {
+            if ("Notification" in window) {
+                if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+                    Notification.requestPermission();
+                }
+            }
+        }
+
+        function dispararNotificacaoDesktop(titulo, mensagem) {
+            if ("Notification" in window && Notification.permission === "granted") {
+                const notificacao = new Notification(titulo, {
+                    body: mensagem,
+                    icon: "https://cdn-icons-png.flaticon.com/512/564/564246.png", 
+                    requireInteraction: true 
+                });
+
+                notificacao.onclick = function () {
+                    window.focus();
+                    this.close();
+                };
+            }
+        }
+
+        // --- SISTEMA DE COMUNICAÇÃO ENTRE ABAS (LOCALSTORAGE) ---
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'alerta_emergencia_disparado') {
+                const info = JSON.parse(e.newValue);
+                if (currentUser && currentUser.role === 'coordenador') {
+                    dispararNotificacaoDesktop("🚨 FALHA CRÍTICA", `O ${info.prof} travou o sistema de ar por segurança! Verifique a situação imediatamente.`);
+                    sincronizarTravaRemota(true);
+                }
+            } else if (e.key === 'alerta_emergencia_resolvido') {
+                if (currentUser && currentUser.role === 'coordenador') {
+                    dispararNotificacaoDesktop("✅ SISTEMA NORMALIZADO", "O problema foi resolvido pelo professor e o sistema foi destravado.");
+                    sincronizarTravaRemota(false);
+                }
+            }
+        });
+
+        // --- SISTEMA DE USUÁRIOS E ESTADO GLOBAL ---
+        const usuariosDB = [
+            { id: 'coordenador', pass: '123', role: 'coordenador', nome: 'Coordenador', avatar: 'C' },
+            { id: 'souza', pass: '123', role: 'professor', nome: 'Prof. Souza', avatar: 'P' },
+            { id: 'silva', pass: '123', role: 'professor', nome: 'Prof. Silva', avatar: 'P' },
+            { id: 'mendes', pass: '123', role: 'professor', nome: 'Prof. Mendes', avatar: 'P' },
+            { id: 'aluno', pass: '123', role: 'aluno', nome: 'Aluno', avatar: 'A' }
+        ];
+
+        let currentUser = null;
+        let systemLocked = false;
+        let emergencyStartTime = null;
+        let chartInstances = {};
+        let intervals = {};
+        
+        const relatorios = [];
+        const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
+
+        // Adicionado "elapsedTime: 0" para rastrear os segundos do gráfico
+        const salas = {
+            lab1: { 
+                nome: 'Laboratório 1', professorDesignado: 'Prof. Souza',
+                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(),
+                bancadas: [{id: 'L1B1', status: false, time: 0, elapsedTime: 0}, {id: 'L1B2', status: false, time: 0, elapsedTime: 0}] 
+            },
+            lab2: { 
+                nome: 'Laboratório 2', professorDesignado: 'Nenhum', 
+                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(),
+                bancadas: [{id: 'L2B1', status: false, time: 0, elapsedTime: 0}, {id: 'L2B2', status: false, time: 0, elapsedTime: 0}] 
+            }
+        };
+
+        // --- LOGIN E NAVEGAÇÃO ---
+        function realizarLogin(event) {
+            event.preventDefault();
+            const userInp = document.getElementById('input-usuario').value.toLowerCase();
+            const passInp = document.getElementById('input-senha').value;
+            const erroEl = document.getElementById('msg-erro-login');
+
+            const foundUser = usuariosDB.find(u => u.id === userInp && u.pass === passInp);
+
+            if (foundUser) {
+                erroEl.classList.add('hidden');
+                efetivarLogin(foundUser);
+            } else {
+                erroEl.classList.remove('hidden');
+            }
+        }
+
+        function efetivarLogin(user) {
+            currentUser = user;
+            document.getElementById('tela-login').classList.add('hidden');
+            document.getElementById('app-container').classList.remove('hidden');
+
+            document.getElementById('user-avatar').innerText = currentUser.avatar;
+            document.getElementById('user-name').innerText = currentUser.nome;
+            document.getElementById('user-role').innerText = currentUser.role === 'coordenador' ? 'Gestão Geral' : (currentUser.role === 'professor' ? 'Professor' : 'Leitura');
+
+            renderSidebar();
+            navigate(currentUser.role === 'aluno' ? 'aluno' : (currentUser.role === 'coordenador' ? 'dashboard' : 'minha-sala'));
+            solicitarPermissaoNotificacao();
+            
+            if(!intervals.global) intervals.global = setInterval(globalTick, 1000);
+            
+            document.getElementById('input-usuario').value = '';
+            document.getElementById('input-senha').value = '';
+        }
+
+        function logout() {
+            currentUser = null;
+            document.getElementById('app-container').classList.add('hidden');
+            document.getElementById('tela-login').classList.remove('hidden');
+            Object.values(chartInstances).forEach(c => c.destroy());
+            chartInstances = {};
+        }
+
+        function renderSidebar() {
+            const menu = document.getElementById('menu-navegacao');
+            menu.innerHTML = '';
+            
+            if (currentUser.role !== 'aluno') {
+                menu.innerHTML += `<a href="#" onclick="navigate('dashboard')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-chart-line w-6"></i>Dashboard</a>`;
+            }
+            if (currentUser.role === 'coordenador') {
+                menu.innerHTML += `<a href="#" onclick="navigate('atribuicao')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-calendar-check w-6"></i>Atribuir Salas</a>`;
+                menu.innerHTML += `<a href="#" onclick="navigate('relatorios')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-file-contract w-6"></i>Relatórios</a>`;
+            }
+            if (currentUser.role === 'professor') {
+                menu.innerHTML += `<a href="#" onclick="navigate('minha-sala')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-person-chalkboard w-6"></i>Minha Sala</a>`;
+                document.getElementById('box-emergencia').style.display = 'block';
+            } else {
+                document.getElementById('box-emergencia').style.display = 'none';
+            }
+            if (currentUser.role === 'aluno') {
+                menu.innerHTML += `<a href="#" onclick="navigate('aluno')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-eye w-6"></i>Visualizar Bancada</a>`;
+            }
+
+            if (currentUser.role === 'professor') {
+                document.getElementById('btn-resolver-falha').classList.remove('hidden');
+            } else {
+                document.getElementById('btn-resolver-falha').classList.add('hidden');
+            }
+        }
+
+        function navigate(tela) {
+            document.querySelectorAll('.tela-conteudo').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tela-${tela}`).classList.remove('hidden');
+            
+            if(tela === 'dashboard') updateDashboard();
+            if(tela === 'atribuicao') renderAtribuicao();
+            if(tela === 'minha-sala') renderMinhaSalaUI();
+            if(tela === 'relatorios') renderRelatorios();
+            if(tela === 'aluno') initChart('chart-aluno');
+        }
+
+        // --- DASHBOARD GERAL ---
+        function updateDashboard() {
+            const grid = document.getElementById('grid-salas-dashboard');
+            grid.innerHTML = '';
+            let fluxoTotal = 0;
+
+            for (const [id, sala] of Object.entries(salas)) {
+                let bancadasOn = 0;
+                sala.bancadas.forEach(b => { if(b.status) { bancadasOn++; fluxoTotal += 15; } });
+                
+                const cardColor = sala.masterValve ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white';
+                const statusTxt = sala.masterValve ? `Ar na sala ON (${bancadasOn} bancadas)` : 'Sala Desativada';
+                
+                grid.innerHTML += `
+                    <div class="rounded-xl border p-6 ${cardColor}">
+                        <h3 class="font-bold text-slate-800 mb-2">${sala.nome}</h3>
+                        <p class="text-sm text-slate-600 mb-1"><i class="fa-solid fa-user mr-2"></i>${sala.professorDesignado}</p>
+                        <p class="text-sm font-medium ${sala.masterValve ? 'text-blue-700' : 'text-slate-400'}">${statusTxt}</p>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('dash-fluxo').innerHTML = systemLocked ? `0 <span class="text-sm font-normal">L/min</span>` : `${fluxoTotal} <span class="text-sm font-normal">L/min</span>`;
+            document.getElementById('dash-pressao').innerHTML = systemLocked ? `0.0 <span class="text-sm font-normal">BAR</span>` : `8.5 <span class="text-sm font-normal">BAR</span>`;
+            
+            const dashVazamento = document.getElementById('dash-vazamento');
+            if (systemLocked) {
+                dashVazamento.innerText = 'CRÍTICO: Detectado!';
+                dashVazamento.className = 'text-xl font-bold text-red-600 animate-pulse';
+            } else {
+                dashVazamento.innerText = 'Nenhum Detectado';
+                dashVazamento.className = 'text-xl font-bold text-green-600';
+            }
+        }
+
+        function renderAtribuicao() {
+            const lista = document.getElementById('lista-atribuicao');
+            lista.innerHTML = '';
+            for (const [id, sala] of Object.entries(salas)) {
+                let options = professoresList.map(p => `<option value="${p}" ${sala.professorDesignado === p ? 'selected' : ''}>${p}</option>`).join('');
+                lista.innerHTML += `
+                    <div class="flex items-center justify-between p-4 bg-slate-50 border rounded-lg">
+                        <div class="font-bold">${sala.nome}</div>
+                        <select onchange="updateDesignacao('${id}', this.value)" class="p-2 border rounded bg-white focus:outline-blue-500">
+                            ${options}
+                        </select>
+                    </div>
+                `;
+            }
+        }
+        
+        function updateDesignacao(salaId, profName) {
+            salas[salaId].professorDesignado = profName;
+            if(profName !== 'Nenhum') {
+                salas[salaId].masterValve = false;
+                salas[salaId].bancadas.forEach(b => b.status = false);
+            }
+        }
+
+        // --- PROFESSOR: MINHA SALA ---
+        function getSalaDoProf() {
+            if(currentUser.role !== 'professor') return null;
+            return Object.entries(salas).find(([id, s]) => s.professorDesignado === currentUser.nome);
+        }
+
+        function renderMinhaSalaUI() {
+            const salaEntry = getSalaDoProf();
+            if (!salaEntry) {
+                document.getElementById('aviso-sem-sala').classList.remove('hidden');
+                document.getElementById('conteudo-minha-sala').classList.add('hidden');
+                return;
+            }
+            
+            document.getElementById('aviso-sem-sala').classList.add('hidden');
+            document.getElementById('conteudo-minha-sala').classList.remove('hidden');
+            
+            const [idSala, sala] = salaEntry;
+            document.getElementById('titulo-sala-prof').innerText = sala.nome;
+            
+            const btnMaster = document.getElementById('btn-master-valve');
+            if (sala.masterValve) {
+                btnMaster.className = 'px-6 py-3 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors';
+                document.getElementById('texto-master-valve').innerText = 'Ar da Sala Liberado';
+                document.getElementById('aviso-master-off').classList.add('hidden');
+                document.getElementById('grid-bancadas-prof').classList.remove('hidden');
+                
+                if(document.getElementById('grid-bancadas-prof').innerHTML === '') {
+                    buildBancadasHTML(idSala, sala);
+                }
+            } else {
+                btnMaster.className = 'px-6 py-3 rounded-lg font-bold text-white bg-slate-400 hover:bg-slate-500 transition-colors';
+                document.getElementById('texto-master-valve').innerText = 'Liberar Ar para a Sala';
+                document.getElementById('aviso-master-off').classList.remove('hidden');
+                document.getElementById('grid-bancadas-prof').classList.add('hidden');
+                document.getElementById('grid-bancadas-prof').innerHTML = ''; 
+            }
+        }
+
+        function toggleMasterValve() {
+            if(systemLocked) return alert("Sistema travado devido a emergência!");
+            const salaEntry = getSalaDoProf();
+            if(!salaEntry) return;
+            const sala = salaEntry[1];
+            
+            sala.masterValve = !sala.masterValve;
+            
+            if(sala.masterValve) {
+                sala.sessionStartTime = new Date();
+                sala.houveFalha = false;
+                sala.tempoFalha = 0;
+                sala.bancadasUsadas.clear();
+            } else {
+                sala.bancadas.forEach(b => { b.status = false; b.time = 0; b.elapsedTime = 0; });
+            }
+            renderMinhaSalaUI();
+        }
+
+        function buildBancadasHTML(idSala, sala) {
+            const grid = document.getElementById('grid-bancadas-prof');
+            grid.innerHTML = '';
+            
+            sala.bancadas.forEach((b, index) => {
+                const isOn = b.status;
+                grid.innerHTML += `
+                    <div id="card-${b.id}" class="border rounded-xl p-5 ${isOn ? 'bg-blue-50 border-blue-200' : 'bg-white'}">
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="font-bold text-lg">Bancada ${index + 1}</h4>
+                            <div class="flex space-x-2">
+                                <input type="number" id="input-time-${b.id}" placeholder="Minutos" class="w-20 p-1 border rounded text-sm">
+                                <button id="btn-${b.id}" onclick="toggleBancada('${idSala}', '${b.id}')" class="px-4 py-1 rounded text-white text-sm font-bold ${isOn ? 'bg-red-500' : 'bg-blue-600'}">
+                                    ${isOn ? 'Desligar' : 'Ligar Ar'}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex justify-between text-sm mb-2 font-medium">
+                            <span>Pressão: <span id="bar-${b.id}" class="text-blue-600">${isOn && !systemLocked ? '8.0 BAR' : '0.0 BAR'}</span></span>
+                            <span>Tempo: <span id="time-${b.id}" class="text-indigo-600">${b.time > 0 ? b.time + 's' : (isOn ? 'Ilimitado' : '--')}</span></span>
+                        </div>
+                        <canvas id="chart-${b.id}" height="100"></canvas>
+                    </div>
+                `;
+                setTimeout(() => initChart(`chart-${b.id}`), 50);
+            });
+        }
+
+        function toggleBancada(idSala, idBancada) {
+            if(systemLocked) return;
+            const sala = salas[idSala];
+            const b = sala.bancadas.find(x => x.id === idBancada);
+            b.status = !b.status;
+            
+            const btn = document.getElementById(`btn-${idBancada}`);
+            const card = document.getElementById(`card-${idBancada}`);
+            
+            if (b.status) {
+                const val = document.getElementById(`input-time-${idBancada}`).value;
+                b.time = val && val > 0 ? val * 60 : 0;
+                b.elapsedTime = 0; // Zera o contador de uso pro gráfico
+                sala.bancadasUsadas.add(idBancada);
+                
+                btn.innerText = 'Desligar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
+                card.className = 'border rounded-xl p-5 bg-blue-50 border-blue-200';
+                
+                // Reseta os eixos e dados do gráfico
+                if(chartInstances[`chart-${idBancada}`]){
+                    chartInstances[`chart-${idBancada}`].data.labels = ['0s', '0s', '0s', '0s', '0s'];
+                    chartInstances[`chart-${idBancada}`].data.datasets[0].data = [0,0,0,0,0];
+                    chartInstances[`chart-${idBancada}`].update();
+                }
+
+            } else {
+                b.time = 0;
+                btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
+                card.className = 'border rounded-xl p-5 bg-white';
+            }
+        }
+
+        function initChart(canvasId) {
+            const ctx = document.getElementById(canvasId);
+            if(!ctx) return;
+            if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: ['0s', '0s', '0s', '0s', '0s'], datasets: [{ label: 'Pressão (BAR)', data: [0,0,0,0,0], borderColor: '#2563eb', tension: 0.4 }] },
+                options: { animation: false, scales: { y: { min: 0, max: 10 } }, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function encerrarAtividade() {
+            const entry = getSalaDoProf();
+            if(!entry) return;
+            const sala = entry[1];
+            
+            const duracaoMs = new Date() - sala.sessionStartTime;
+            const duracaoMin = Math.max(1, Math.floor(duracaoMs / 60000));
+            const arrBancadas = Array.from(sala.bancadasUsadas);
+            const statusFalha = sala.houveFalha ? `<span class="text-red-600 font-bold">Sim (${sala.tempoFalha}s duração)</span>` : `<span class="text-green-600">Nenhuma falha</span>`;
+
+            relatorios.push({
+                data: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+                prof: sala.professorDesignado + ' / ' + sala.nome,
+                duracao: duracaoMin + ' min(s)',
+                bancadasLib: arrBancadas.length > 0 ? arrBancadas.join(', ') : 'Nenhuma',
+                status: statusFalha
+            });
+            
+            sala.masterValve = false;
+            sala.bancadas.forEach(b => { b.status = false; b.time = 0; });
+            alert("Atividade encerrada e relatório gerado para o Coordenador.");
+            renderMinhaSalaUI();
+        }
+
+        function renderRelatorios() {
+            const tbody = document.getElementById('tabela-relatorios');
+            tbody.innerHTML = '';
+            if(relatorios.length === 0) tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">Nenhum relatório gerado.</td></tr>`;
+            relatorios.forEach(r => {
+                tbody.innerHTML += `<tr class="border-b">
+                    <td class="px-4 py-3">${r.data}</td><td class="px-4 py-3">${r.prof}</td><td class="px-4 py-3">${r.duracao}</td><td class="px-4 py-3">${r.bancadasLib}</td><td class="px-4 py-3">${r.status}</td>
+                </tr>`;
+            });
+        }
+
+        // Exportar relatório para CSV
+        function baixarRelatorioCSV() {
+            if (relatorios.length === 0) {
+                alert("Não há relatórios para exportar.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Data;Professor / Sala;Tempo de Uso;Bancadas Utilizadas;Status de Falhas\n";
+
+            relatorios.forEach(r => {
+                const tempDiv = document.createElement("div");
+                tempDiv.innerHTML = r.status;
+                const statusLimpo = tempDiv.textContent || tempDiv.innerText || "";
+
+                const row = `${r.data};${r.prof};${r.duracao};${r.bancadasLib};${statusLimpo}`;
+                csvContent += row + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "relatorio_pneumaticsys.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- EMERGÊNCIA E NOTIFICAÇÃO ---
+        function acionarEmergencia() {
+            if(currentUser.role !== 'professor') return; 
+            
+            localStorage.setItem('alerta_emergencia_disparado', JSON.stringify({ prof: currentUser.nome, time: Date.now() }));
+            
+            sincronizarTravaRemota(true);
+            dispararNotificacaoDesktop("🚨 FALHA CRÍTICA", "Sistema de ar travado por emergência. Verifique a sala imediatamente!");
+            navigate('minha-sala');
+        }
+
+        function resolverEmergencia() {
+            if(currentUser.role !== 'professor') {
+                alert("Acesso Negado: Apenas o Professor em sala pode destravar o sistema após verificar o problema.");
+                return;
+            }
+
+            const falhaDiff = Math.floor((new Date() - emergencyStartTime) / 1000);
+            Object.values(salas).forEach(s => { if(s.masterValve) s.tempoFalha += falhaDiff; });
+
+            localStorage.setItem('alerta_emergencia_resolvido', Date.now());
+
+            sincronizarTravaRemota(false);
+            alert("Sistema destravado. As bancadas podem ser ligadas novamente.");
+        }
+
+        function sincronizarTravaRemota(travar) {
+            systemLocked = travar;
+            
+            if (travar) {
+                emergencyStartTime = new Date();
+                Object.values(salas).forEach(s => {
+                    if(s.masterValve) s.houveFalha = true;
+                    s.bancadas.forEach(b => { b.status = false; b.time = 0; }); 
+                });
+
+                document.getElementById('banner-emergencia').classList.remove('hidden');
+                document.getElementById('status-linha-ar').className = "flex items-center bg-red-50 border border-red-200 px-4 py-2 rounded-full space-x-2 text-red-700 font-medium text-sm";
+                document.getElementById('texto-status-ar').innerText = "Vazamento/Acidente Detectado!";
+            } else {
+                emergencyStartTime = null;
+                document.getElementById('banner-emergencia').classList.add('hidden');
+                document.getElementById('status-linha-ar').className = "flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm";
+                document.getElementById('texto-status-ar').innerText = "Tubulação Normal";
+                
+                Object.values(salas).forEach(s => {
+                    s.bancadas.forEach(b => {
+                        const btn = document.getElementById(`btn-${b.id}`);
+                        const card = document.getElementById(`card-${b.id}`);
+                        if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
+                        if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
+                    });
+                });
+            }
+            
+            if(!document.getElementById('tela-dashboard').classList.contains('hidden')) updateDashboard();
+        }
+
+        // --- GLOBAL TICK ---
+        function globalTick() {
+            if(systemLocked && emergencyStartTime) {
+                const diff = Math.floor((new Date() - emergencyStartTime) / 1000);
+                document.getElementById('texto-tempo-falha').innerText = `Duração da falha: ${diff} segundos. Aguardando Professor resolver.`;
+            }
+
+            for(const [id, sala] of Object.entries(salas)) {
+                sala.bancadas.forEach(b => {
+                    
+                    // Contabiliza o tempo percorrido pro eixo X do Chart
+                    if (b.status && !systemLocked) {
+                        b.elapsedTime++;
+                    }
+
+                    if (b.status && b.time > 0) {
+                        b.time--;
+                        if (b.time <= 0) {
+                            b.status = false; 
+                            const btn = document.getElementById(`btn-${b.id}`);
+                            const card = document.getElementById(`card-${b.id}`);
+                            if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
+                            if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
+                        }
+                    }
+                    
+                    if(document.getElementById(`time-${b.id}`)) {
+                        document.getElementById(`time-${b.id}`).innerText = b.time > 0 ? b.time + 's' : (b.status ? 'Ilimitado' : '--');
+                        document.getElementById(`bar-${b.id}`).innerText = (b.status && !systemLocked) ? '8.0 BAR' : '0.0 BAR';
+                    }
+
+                    // Atualiza o Chart da respectiva bancada (Labels e Dados)
+                    if (chartInstances[`chart-${b.id}`]) {
+                        const chart = chartInstances[`chart-${b.id}`];
+                        const newData = (b.status && !systemLocked) ? (8.0 + (Math.random()*0.4 - 0.2)) : 0;
+                        chart.data.labels.shift();
+                        chart.data.labels.push(b.elapsedTime + 's');
+                        chart.data.datasets[0].data.shift();
+                        chart.data.datasets[0].data.push(newData);
+                        chart.update();
+                    }
+                });
+            }
+
+            // Atualiza o painel/Chart do Aluno
+            if (currentUser && currentUser.role === 'aluno') {
+                const targetBancada = salas.lab1.bancadas[0];
+                const isOn = targetBancada.status && !systemLocked;
+                document.getElementById('aluno-bar').innerText = isOn ? '8.1 BAR' : '0.0 BAR';
+                document.getElementById('aluno-timer').innerText = targetBancada.time > 0 ? `${targetBancada.time}s` : (isOn ? 'Ilimitado' : '--:--');
+                
+                if (chartInstances['chart-aluno']) {
+                     const c = chartInstances['chart-aluno'];
+                     c.data.labels.shift();
+                     c.data.labels.push(targetBancada.elapsedTime + 's');
+                     c.data.datasets[0].data.shift();
+                     c.data.datasets[0].data.push(isOn ? 8.1 : 0);
+                     c.update();
+                }
+            }
+        }
+    </script>
 </body>
 </html>
