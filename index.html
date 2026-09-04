@@ -5,14 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel Pneumático TCC - PneumaticSys</title>
   
-  <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React & React DOM via CDN -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- Babel para interpretar o React JSX no navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#f8fafc] text-slate-800 font-sans antialiased">
@@ -21,7 +16,6 @@
   <script type="text/babel">
     const { useState } = React;
 
-    // Ícones em SVG
     const WindIcon = () => (
       <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12.8 19.6A2 2 0 1 0 14 16H2" /><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2" /><path d="M9.8 4.4A2 2 0 1 1 11 8H2" />
@@ -83,10 +77,8 @@
       return (
         <div className="flex h-screen w-screen overflow-hidden bg-[#f1f5f9]">
           
-          {/* PAINEL LATERAL (SIDEBAR) */}
           <aside className="w-64 bg-[#0a0f1d] text-white flex flex-col justify-between flex-shrink-0">
             <div>
-              {/* Logo */}
               <div className="p-6 flex items-center gap-3 border-b border-slate-800/60">
                 <div className="text-blue-400">
                   <WindIcon />
@@ -94,7 +86,6 @@
                 <h1 className="font-bold text-xl tracking-tight">PneumaticSys</h1>
               </div>
 
-              {/* Menu de Navegação */}
               <div className="p-4 space-y-6">
                 <div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">
@@ -139,7 +130,6 @@
                   </nav>
                 </div>
 
-                {/* Caixa de Simulação TCC */}
                 <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
                   <p className="text-xs text-slate-400 font-medium">Simulação de Testes (TCC)</p>
                   <button
@@ -156,7 +146,6 @@
               </div>
             </div>
 
-            {/* Perfil do Usuário */}
             <div className="p-4 border-t border-slate-800/80 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm text-white">
@@ -174,14 +163,11 @@
             </div>
           </aside>
 
-          {/* ÁREA PRINCIPAL */}
           <main className="flex-1 overflow-y-auto p-8 space-y-8">
             
-            {/* Topbar / Título & Alerta */}
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard</h2>
               
-              {/* Badge de Status da Linha */}
               <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                 leakDetected 
                   ? 'bg-red-50 text-red-700 border-red-200' 
@@ -192,10 +178,8 @@
               </div>
             </div>
 
-            {/* CARDS KPIS DE STATUS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
-              {/* Card 1: Pressão */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-5">
                 <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
                   <PulseIcon />
@@ -208,7 +192,6 @@
                 </div>
               </div>
 
-              {/* Card 2: Fluxo */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-5">
                 <div className="w-12 h-12 rounded-2xl bg-cyan-50 text-cyan-600 flex items-center justify-center flex-shrink-0">
                   <WindIcon />
@@ -221,7 +204,6 @@
                 </div>
               </div>
 
-              {/* Card 3: Salas em Uso */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-5">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
                   <PowerIcon />
@@ -236,7 +218,6 @@
 
             </div>
 
-            {/* SEÇÃO MONITORAMENTO DE LABORATÓRIOS */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
               <div className="flex items-center gap-2 text-slate-800 font-bold text-base">
                 <div className="text-blue-600">
@@ -245,7 +226,6 @@
                 <h3>Monitoramento Geral dos Laboratórios</h3>
               </div>
 
-              {/* GRID DOS LABORATÓRIOS */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {rooms.map((room) => (
                   <div key={room.id} className="p-4 bg-slate-50/70 border border-slate-200/70 rounded-xl space-y-3">
