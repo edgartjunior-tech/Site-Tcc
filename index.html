@@ -241,20 +241,20 @@
         const WEBHOOK_URL = 'https://webhook.site/bffdabf3-5723-4db9-b5d6-c097c1d2196b';
 
         function enviarSinalWebhook(acao, dados) {
-            fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    acao: acao,
-                    dados: dados,
-                    dataHora: new Date().toISOString()
-                })
-            })
-            .then(() => console.log(`Sinal [${acao}] enviado ao Webhook com sucesso!`))
-            .catch(erro => console.error('Erro ao enviar sinal:', erro));
-        }
+    fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'text/plain'
+        },
+        body: JSON.stringify({
+            acao: acao,
+            dados: dados,
+            dataHora: new Date().toISOString()
+        })
+    })
+    .then(() => console.log(`Sinal [${acao}] enviado ao Webhook com sucesso!`))
+    .catch(erro => console.error('Erro ao enviar sinal:', erro));
+}
 
         // --- SISTEMA DE COMUNICAÇÃO ENTRE ABAS (LOCALSTORAGE) ---
         window.addEventListener('storage', function(e) {
