@@ -240,9 +240,10 @@
         // --- INTEGRAÇÃO WEBHOOK PARA TESTE ---
         const WEBHOOK_URL = 'https://webhook.site/bffdabf3-5723-4db9-b5d6-c097c1d2196b';
 
-        function enviarSinalWebhook(acao, dados) {
+       function enviarSinalWebhook(acao, dados) {
     fetch(WEBHOOK_URL, {
         method: 'POST',
+        mode: 'no-cors', // <--- ESTA LINHA LIBERA O ENVIO NO NAVEGADOR
         headers: {
             'Content-Type': 'text/plain'
         },
@@ -252,7 +253,7 @@
             dataHora: new Date().toISOString()
         })
     })
-    .then(() => console.log(`Sinal [${acao}] enviado ao Webhook com sucesso!`))
+    .then(() => console.log(`Sinal [${acao}] enviado com sucesso!`))
     .catch(erro => console.error('Erro ao enviar sinal:', erro));
 }
 
