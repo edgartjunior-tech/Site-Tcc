@@ -237,6 +237,25 @@
             }
         }
 
+        // --- INTEGRAÇÃO WEBHOOK PARA TESTE ---
+        const WEBHOOK_URL = 'https://webhook.site/bffdabf3-5723-4db9-b5d6-c097c1d2196b';
+
+        function enviarSinalWebhook(acao, dados) {
+            fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    acao: acao,
+                    dados: dados,
+                    dataHora: new Date().toISOString()
+                })
+            })
+            .then(() => console.log(`Sinal [${acao}] enviado ao Webhook com sucesso!`))
+            .catch(erro => console.error('Erro ao enviar sinal:', erro));
+        }
+
         // --- SISTEMA DE COMUNICAÇÃO ENTRE ABAS (LOCALSTORAGE) ---
         window.addEventListener('storage', function(e) {
             if (e.key === 'alerta_emergencia_disparado') {
@@ -271,7 +290,6 @@
         const relatorios = [];
         const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
 
-        // Adicionado "elapsedTime: 0" para rastrear os segundos do gráfico
         const salas = {
             lab1: { 
                 nome: 'Laboratório 1', professorDesignado: 'Prof. Souza',
@@ -525,23 +543,33 @@
             if (b.status) {
                 const val = document.getElementById(`input-time-${idBancada}`).value;
                 b.time = val && val > 0 ? val * 60 : 0;
-                b.elapsedTime = 0; // Zera o contador de uso pro gráfico
+                b.elapsedTime = 0; 
                 sala.bancadasUsadas.add(idBancada);
                 
                 btn.innerText = 'Desligar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
                 card.className = 'border rounded-xl p-5 bg-blue-50 border-blue-200';
                 
-                // Reseta os eixos e dados do gráfico
                 if(chartInstances[`chart-${idBancada}`]){
                     chartInstances[`chart-${idBancada}`].data.labels = ['0s', '0s', '0s', '0s', '0s'];
                     chartInstances[`chart-${idBancada}`].data.datasets[0].data = [0,0,0,0,0];
                     chartInstances[`chart-${idBancada}`].update();
                 }
 
+                enviarSinalWebhook('LIGAR_BANCADA', { 
+                    sala: sala.nome, 
+                    bancada: idBancada, 
+                    tempoMinutos: val || 'Ilimitado' 
+                });
+
             } else {
                 b.time = 0;
                 btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
                 card.className = 'border rounded-xl p-5 bg-white';
+
+                enviarSinalWebhook('DESLIGAR_BANCADA', { 
+                    sala: sala.nome, 
+                    bancada: idBancada 
+                });
             }
         }
 
@@ -592,7 +620,6 @@
             });
         }
 
-        // Exportar relatório para CSV
         function baixarRelatorioCSV() {
             if (relatorios.length === 0) {
                 alert("Não há relatórios para exportar.");
@@ -624,6 +651,11 @@
         function acionarEmergencia() {
             if(currentUser.role !== 'professor') return; 
             
+            enviarSinalWebhook('EMERGENCIA_ACIONADA', { 
+                professor: currentUser.nome, 
+                status: 'SISTEMA_BLOQUEADO' 
+            });
+
             localStorage.setItem('alerta_emergencia_disparado', JSON.stringify({ prof: currentUser.nome, time: Date.now() }));
             
             sincronizarTravaRemota(true);
@@ -687,8 +719,6 @@
 
             for(const [id, sala] of Object.entries(salas)) {
                 sala.bancadas.forEach(b => {
-                    
-                    // Contabiliza o tempo percorrido pro eixo X do Chart
                     if (b.status && !systemLocked) {
                         b.elapsedTime++;
                     }
@@ -709,7 +739,6 @@
                         document.getElementById(`bar-${b.id}`).innerText = (b.status && !systemLocked) ? '8.0 BAR' : '0.0 BAR';
                     }
 
-                    // Atualiza o Chart da respectiva bancada (Labels e Dados)
                     if (chartInstances[`chart-${b.id}`]) {
                         const chart = chartInstances[`chart-${b.id}`];
                         const newData = (b.status && !systemLocked) ? (8.0 + (Math.random()*0.4 - 0.2)) : 0;
@@ -722,7 +751,6 @@
                 });
             }
 
-            // Atualiza o painel/Chart do Aluno
             if (currentUser && currentUser.role === 'aluno') {
                 const targetBancada = salas.lab1.bancadas[0];
                 const isOn = targetBancada.status && !systemLocked;
