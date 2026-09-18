@@ -46,11 +46,11 @@
             </form>
 
             <div class="mt-6 text-xs text-slate-400 text-left bg-slate-50 p-3 rounded">
-                <div class="mb-2 font-bold text-blue-600">Versão 9 — aluno gerenciado pelo professor</div>
+                <div class="mb-2 font-bold text-blue-600">Versão 10 — múltiplos alunos por bancada</div>
                 <strong>Logins de teste (Senha: 123):</strong><br>
                 Coordenador: <em>coordenador</em><br>
                 Professores: <em>souza</em>, <em>silva</em>, <em>mendes</em><br>
-                Aluno: <em>aluno</em> (bancada definida pelo professor)
+                Alunos: <em>aluno1</em>, <em>aluno2</em> (Senha: 123)
             </div>
         </div>
     </div>
@@ -144,7 +144,7 @@
                 </div>
 
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-6 text-sm text-blue-800">
-                    <strong>Versão 9:</strong> o Coordenador gerencia somente Professor → Sala. O aluno <strong>não é atribuído nesta tela</strong>; a bancada do aluno é definida pelo professor dentro de <strong>Minha Sala</strong>.
+                    <strong>Versão 10:</strong> o Coordenador gerencia somente Professor → Sala. Cada professor escolhe o aluno de cada bancada dentro de <strong>Minha Sala</strong>.
                 </div>
             </div>
 
@@ -169,15 +169,10 @@
                         </div>
                     </div>
 
-                    <div id="painel-aluno-professor" class="bg-white p-5 rounded-xl border border-slate-100 mb-6">
-                        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                            <div>
-                                <h3 class="font-bold text-slate-800"><i class="fa-solid fa-user-graduate text-blue-600 mr-2"></i>Gerenciar aluno desta sala</h3>
-                                <p class="text-sm text-slate-500 mt-1">Somente o professor responsável por esta sala define em qual bancada o usuário <strong>aluno</strong> poderá entrar.</p>
-                                <div id="status-aluno-professor" class="text-sm font-medium mt-2 text-slate-600">Carregando atribuição...</div>
-                            </div>
-                            <div id="botoes-aluno-professor" class="flex flex-wrap gap-2"></div>
-                        </div>
+                    <div id="painel-aluno-professor" class="bg-blue-50 p-5 rounded-xl border border-blue-100 mb-6">
+                        <h3 class="font-bold text-slate-800"><i class="fa-solid fa-user-graduate text-blue-600 mr-2"></i>Alunos da aula</h3>
+                        <p class="text-sm text-slate-600 mt-1">Escolha o aluno diretamente no cartão de cada bancada. Um aluno só pode ficar em uma bancada por vez.</p>
+                        <div id="status-aluno-professor" class="text-sm font-medium mt-2 text-slate-600">As atribuições são salvas no Firebase e valem também em outros computadores.</div>
                     </div>
                     
                     <div id="aviso-master-off" class="text-center p-8 bg-slate-50 text-slate-500 rounded-lg border border-dashed border-slate-300 mb-6">
@@ -268,7 +263,7 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v9 professor gerencia aluno carregado');
+        console.log('PneumaticSys Firebase v10 múltiplos alunos por bancada carregado');
 
         // Bancadas lógicas do sistema. O ESP32 do protótipo pode usar apenas Bancada1/Bancada2;
         // Bancada3/Bancada4 permitem que a Sala 2 também funcione na simulação web.
@@ -416,7 +411,7 @@
         }
 
         // Valida a atribuição do aluno. A sala/bancada permitida vem do Firebase,
-        // definida pelo professor responsável pela sala.
+        // definida pelo professor responsável pela sala, individualmente por aluno.
         function aplicarAtribuicaoAluno(dadosAluno) {
             if (!currentUser || currentUser.role !== 'aluno') return false;
             if (!dadosAluno || dadosAluno.ativo !== true || !dadosAluno.salaId || !dadosAluno.bancadaId) return false;
@@ -576,7 +571,8 @@
             { id: 'souza', pass: '123', role: 'professor', nome: 'Prof. Souza', avatar: 'P' },
             { id: 'silva', pass: '123', role: 'professor', nome: 'Prof. Silva', avatar: 'P' },
             { id: 'mendes', pass: '123', role: 'professor', nome: 'Prof. Mendes', avatar: 'P' },
-            { id: 'aluno', pass: '123', role: 'aluno', nome: 'Aluno', avatar: 'A' }
+            { id: 'aluno1', pass: '123', role: 'aluno', nome: 'Aluno 1', avatar: 'A' },
+            { id: 'aluno2', pass: '123', role: 'aluno', nome: 'Aluno 2', avatar: 'A' }
         ];
 
         let currentUser = null;
@@ -589,6 +585,7 @@
         let ultimoSyncCoordenador = 0;
         let ultimoSyncRelatorios = 0;
         let ultimoSyncSalas = 0;
+        let ultimoSyncAlunosProfessor = 0;
         
         const relatorios = [];
         const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
@@ -647,7 +644,7 @@
                 const acessoValido = await carregarAtribuicaoAlunoLogin();
                 if (!acessoValido) {
                     const erroEl = document.getElementById('msg-erro-login');
-                    erroEl.innerText = 'Aluno sem sala/bancada atribuída pelo Coordenador.';
+                    erroEl.innerText = 'Aluno sem sala/bancada atribuída pelo Professor.';
                     erroEl.classList.remove('hidden');
                     currentUser = null;
                     return;
@@ -781,47 +778,75 @@
             }
         }
         
-        const ALUNO_PADRAO_ID = 'aluno';
+        const ALUNOS_DISPONIVEIS = [
+            { id: 'aluno1', nome: 'Aluno 1' },
+            { id: 'aluno2', nome: 'Aluno 2' }
+        ];
 
-        async function renderGestaoAlunoProfessor(idSala, sala) {
-            if (!currentUser || currentUser.role !== 'professor') return;
-            if (!sala || !idSala) return;
-
-            const status = document.getElementById('status-aluno-professor');
-            const botoes = document.getElementById('botoes-aluno-professor');
-            if (!status || !botoes) return;
-
-            const atual = await firebaseGet(`Alunos/${ALUNO_PADRAO_ID}`);
-            const pertenceSala = atual && atual.ativo === true && atual.salaId === idSala;
-
-            if (pertenceSala) {
-                status.innerHTML = `<span class="text-green-700">Aluno atribuído à Bancada ${Number(atual.bancadaNumero || 0)}.</span>`;
-            } else if (atual && atual.ativo === true) {
-                status.innerHTML = `<span class="text-amber-700">O aluno está atualmente atribuído a ${atual.salaNome || atual.salaId} / Bancada ${Number(atual.bancadaNumero || 0)}.</span>`;
-            } else {
-                status.innerHTML = '<span class="text-slate-500">Aluno sem bancada atribuída.</span>';
-            }
-
-            botoes.innerHTML = '';
-            sala.bancadas.forEach((b, index) => {
-                const selecionada = pertenceSala && atual.bancadaId === b.id;
-                botoes.innerHTML += `
-                    <button onclick="atribuirAlunoProfessor('${idSala}', '${b.id}')"
-                        class="px-4 py-2 rounded-lg font-bold text-sm ${selecionada ? 'bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}">
-                        ${selecionada ? '✓ ' : ''}Bancada ${index + 1}
-                    </button>
-                `;
-            });
-
-            botoes.innerHTML += `
-                <button onclick="removerAlunoProfessor('${idSala}')"
-                    class="px-4 py-2 rounded-lg font-bold text-sm bg-slate-200 hover:bg-slate-300 text-slate-700">
-                    Remover acesso
-                </button>
-            `;
+        function nomeAlunoPorId(id) {
+            const aluno = ALUNOS_DISPONIVEIS.find(a => a.id === id);
+            return aluno ? aluno.nome : id;
         }
 
-        async function atribuirAlunoProfessor(idSala, idBancada) {
+        async function carregarSeletoresAlunos(idSala, sala) {
+            if (!currentUser || currentUser.role !== 'professor' || !sala) return;
+
+            const dadosAlunos = await firebaseGet('Alunos') || {};
+            const alunosAtivos = Object.entries(dadosAlunos)
+                .filter(([, a]) => a && a.ativo === true);
+
+            const resumo = [];
+
+            sala.bancadas.forEach((b, index) => {
+                const select = document.getElementById(`select-aluno-${b.id}`);
+                const status = document.getElementById(`status-aluno-${b.id}`);
+                if (!select) return;
+
+                const ocupanteEntry = alunosAtivos.find(([, a]) => a.salaId === idSala && a.bancadaId === b.id);
+                const ocupanteId = ocupanteEntry ? ocupanteEntry[0] : '';
+
+                let options = '<option value="">Nenhum aluno</option>';
+                ALUNOS_DISPONIVEIS.forEach(aluno => {
+                    const atribuicao = dadosAlunos[aluno.id];
+                    let complemento = '';
+                    if (atribuicao && atribuicao.ativo === true && !(atribuicao.salaId === idSala && atribuicao.bancadaId === b.id)) {
+                        complemento = ` — em ${atribuicao.salaNome || atribuicao.salaId} / Bancada ${Number(atribuicao.bancadaNumero || 0)}`;
+                    }
+                    options += `<option value="${aluno.id}" ${aluno.id === ocupanteId ? 'selected' : ''}>${aluno.nome}${complemento}</option>`;
+                });
+
+                select.innerHTML = options;
+
+                if (status) {
+                    if (ocupanteId) {
+                        status.innerHTML = `<span class="text-green-700"><i class="fa-solid fa-user-check mr-1"></i>${nomeAlunoPorId(ocupanteId)} autorizado nesta bancada.</span>`;
+                        resumo.push(`Bancada ${index + 1}: ${nomeAlunoPorId(ocupanteId)}`);
+                    } else {
+                        status.innerHTML = '<span class="text-slate-400">Nenhum aluno atribuído.</span>';
+                        resumo.push(`Bancada ${index + 1}: livre`);
+                    }
+                }
+            });
+
+            const statusGeral = document.getElementById('status-aluno-professor');
+            if (statusGeral) statusGeral.innerText = resumo.join('  •  ');
+        }
+
+        async function desativarAluno(alunoId) {
+            return firebasePatch(`Alunos/${alunoId}`, {
+                ativo: false,
+                salaId: '',
+                salaNome: '',
+                bancadaId: '',
+                bancadaNumero: 0,
+                firebaseKey: '',
+                professorId: '',
+                professor: '',
+                atualizadoEm: new Date().toISOString()
+            });
+        }
+
+        async function atribuirAlunoNaBancada(idSala, idBancada, alunoId) {
             if (!currentUser || currentUser.role !== 'professor') return;
 
             const salaEntry = getSalaDoProf();
@@ -840,9 +865,48 @@
                 return;
             }
 
-            const salvo = await firebasePatch(`Alunos/${ALUNO_PADRAO_ID}`, {
-                nome: 'Aluno',
-                usuario: ALUNO_PADRAO_ID,
+            const dadosAlunos = await firebaseGet('Alunos') || {};
+            const ocupanteEntry = Object.entries(dadosAlunos).find(([, a]) =>
+                a && a.ativo === true && a.salaId === idSala && a.bancadaId === idBancada
+            );
+
+            // Selecionar "Nenhum aluno" remove quem estiver atualmente nesta bancada.
+            if (!alunoId) {
+                if (ocupanteEntry) await desativarAluno(ocupanteEntry[0]);
+                await carregarSeletoresAlunos(idSala, sala);
+                return;
+            }
+
+            const cadastro = ALUNOS_DISPONIVEIS.find(a => a.id === alunoId);
+            if (!cadastro) {
+                alert('Aluno inválido.');
+                await carregarSeletoresAlunos(idSala, sala);
+                return;
+            }
+
+            // Se outro aluno ocupa esta bancada, confirma a substituição e remove o acesso anterior.
+            if (ocupanteEntry && ocupanteEntry[0] !== alunoId) {
+                const trocar = confirm(`${nomeAlunoPorId(ocupanteEntry[0])} já está na Bancada ${bancadaIndex + 1}. Deseja substituir por ${cadastro.nome}?`);
+                if (!trocar) {
+                    await carregarSeletoresAlunos(idSala, sala);
+                    return;
+                }
+                await desativarAluno(ocupanteEntry[0]);
+            }
+
+            const atribuicaoAnterior = dadosAlunos[alunoId];
+            if (atribuicaoAnterior && atribuicaoAnterior.ativo === true &&
+                !(atribuicaoAnterior.salaId === idSala && atribuicaoAnterior.bancadaId === idBancada)) {
+                const mover = confirm(`${cadastro.nome} já está em ${atribuicaoAnterior.salaNome || atribuicaoAnterior.salaId} / Bancada ${Number(atribuicaoAnterior.bancadaNumero || 0)}. Deseja mover o aluno para esta bancada?`);
+                if (!mover) {
+                    await carregarSeletoresAlunos(idSala, sala);
+                    return;
+                }
+            }
+
+            const salvo = await firebasePatch(`Alunos/${alunoId}`, {
+                nome: cadastro.nome,
+                usuario: alunoId,
                 salaId: idSala,
                 salaNome: sala.nome,
                 bancadaId: idBancada,
@@ -856,45 +920,11 @@
 
             if (!salvo) {
                 alert('Não foi possível salvar a atribuição do aluno no Firebase.');
+                await carregarSeletoresAlunos(idSala, sala);
                 return;
             }
 
-            await renderGestaoAlunoProfessor(idSala, sala);
-            alert(`Aluno atribuído à ${sala.nome} / Bancada ${bancadaIndex + 1}.`);
-        }
-
-        async function removerAlunoProfessor(idSala) {
-            if (!currentUser || currentUser.role !== 'professor') return;
-
-            const salaEntry = getSalaDoProf();
-            if (!salaEntry || salaEntry[0] !== idSala) return;
-
-            const atual = await firebaseGet(`Alunos/${ALUNO_PADRAO_ID}`);
-            if (!atual || atual.ativo !== true || atual.salaId !== idSala) {
-                await renderGestaoAlunoProfessor(idSala, salaEntry[1]);
-                alert('O aluno não está atribuído a nenhuma bancada desta sala.');
-                return;
-            }
-
-            const salvo = await firebasePatch(`Alunos/${ALUNO_PADRAO_ID}`, {
-                ativo: false,
-                salaId: '',
-                salaNome: '',
-                bancadaId: '',
-                bancadaNumero: 0,
-                firebaseKey: '',
-                professorId: '',
-                professor: '',
-                atualizadoEm: new Date().toISOString()
-            });
-
-            if (!salvo) {
-                alert('Não foi possível remover o acesso do aluno.');
-                return;
-            }
-
-            await renderGestaoAlunoProfessor(idSala, salaEntry[1]);
-            alert('Acesso do aluno removido.');
+            await carregarSeletoresAlunos(idSala, sala);
         }
 
         async function updateDesignacao(salaId, profName) {
@@ -956,7 +986,6 @@
             
             const [idSala, sala] = salaEntry;
             document.getElementById('titulo-sala-prof').innerText = sala.nome;
-            renderGestaoAlunoProfessor(idSala, sala);
             
             const btnMaster = document.getElementById('btn-master-valve');
             if (sala.masterValve) {
@@ -968,6 +997,7 @@
                 if(document.getElementById('grid-bancadas-prof').innerHTML === '') {
                     buildBancadasHTML(idSala, sala);
                 }
+                carregarSeletoresAlunos(idSala, sala);
             } else {
                 btnMaster.className = 'px-6 py-3 rounded-lg font-bold text-white bg-slate-400 hover:bg-slate-500 transition-colors';
                 document.getElementById('texto-master-valve').innerText = 'Liberar Ar para a Sala';
@@ -1025,13 +1055,25 @@
                 const isOn = b.status;
                 grid.innerHTML += `
                     <div id="card-${b.id}" class="border rounded-xl p-5 ${isOn ? 'bg-blue-50 border-blue-200' : 'bg-white'}">
-                        <div class="flex justify-between items-center mb-4">
-                            <h4 class="font-bold text-lg">Bancada ${index + 1}</h4>
-                            <div class="flex space-x-2">
-                                <input type="number" id="input-time-${b.id}" placeholder="Minutos" class="w-20 p-1 border rounded text-sm">
-                                <button id="btn-${b.id}" onclick="toggleBancada('${idSala}', '${b.id}')" class="px-4 py-1 rounded text-white text-sm font-bold ${isOn ? 'bg-red-500' : 'bg-blue-600'}">
-                                    ${isOn ? 'Desligar' : 'Ligar Ar'}
-                                </button>
+                        <div class="flex flex-col gap-4 mb-4">
+                            <div class="flex justify-between items-center gap-3 flex-wrap">
+                                <h4 class="font-bold text-lg">Bancada ${index + 1}</h4>
+                                <div class="flex space-x-2">
+                                    <input type="number" id="input-time-${b.id}" placeholder="Minutos" class="w-20 p-1 border rounded text-sm">
+                                    <button id="btn-${b.id}" onclick="toggleBancada('${idSala}', '${b.id}')" class="px-4 py-1 rounded text-white text-sm font-bold ${isOn ? 'bg-red-500' : 'bg-blue-600'}">
+                                        ${isOn ? 'Desligar' : 'Ligar Ar'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                <label for="select-aluno-${b.id}" class="block text-xs font-bold uppercase text-slate-500 mb-1">Aluno autorizado</label>
+                                <select id="select-aluno-${b.id}"
+                                    onchange="atribuirAlunoNaBancada('${idSala}', '${b.id}', this.value)"
+                                    class="w-full p-2 border rounded-lg bg-white focus:outline-blue-500">
+                                    <option value="">Carregando alunos...</option>
+                                </select>
+                                <div id="status-aluno-${b.id}" class="text-xs mt-2 text-slate-500">Carregando atribuição...</div>
                             </div>
                         </div>
                         <div class="flex justify-between text-sm mb-2 font-medium">
@@ -1043,6 +1085,8 @@
                 `;
                 setTimeout(() => initChart(`chart-${b.id}`), 50);
             });
+
+            setTimeout(() => carregarSeletoresAlunos(idSala, sala), 100);
         }
 
         function toggleBancada(idSala, idBancada) {
@@ -1119,10 +1163,11 @@
             const duracaoMs = fimAula - sala.sessionStartTime;
             const duracaoMin = Math.max(1, Math.floor(duracaoMs / 60000));
             const arrBancadas = Array.from(sala.bancadasUsadas);
-            const alunoAtual = await firebaseGet(`Alunos/${ALUNO_PADRAO_ID}`);
-            const alunoDaSala = alunoAtual && alunoAtual.ativo === true && alunoAtual.salaId === idSala
-                ? alunoAtual
-                : null;
+            const dadosAlunos = await firebaseGet('Alunos') || {};
+            const alunosDaSala = Object.entries(dadosAlunos)
+                .filter(([, aluno]) => aluno && aluno.ativo === true && aluno.salaId === idSala)
+                .map(([usuario, aluno]) => ({ usuario, ...aluno }))
+                .sort((a, b) => Number(a.bancadaNumero || 0) - Number(b.bancadaNumero || 0));
 
             const relatorioFirebase = {
                 criadoEm: fimAula.toISOString(),
@@ -1134,12 +1179,12 @@
                 fimAula: fimAula.toISOString(),
                 duracaoMinutos: duracaoMin,
                 bancadasUtilizadas: arrBancadas,
-                alunos: alunoDaSala ? [{
-                    usuario: alunoDaSala.usuario || ALUNO_PADRAO_ID,
-                    nome: alunoDaSala.nome || 'Aluno',
-                    bancadaId: alunoDaSala.bancadaId || '',
-                    bancadaNumero: Number(alunoDaSala.bancadaNumero || 0)
-                }] : [],
+                alunos: alunosDaSala.map(aluno => ({
+                    usuario: aluno.usuario || '',
+                    nome: aluno.nome || nomeAlunoPorId(aluno.usuario),
+                    bancadaId: aluno.bancadaId || '',
+                    bancadaNumero: Number(aluno.bancadaNumero || 0)
+                })),
                 houveFalha: sala.houveFalha,
                 quantidadeFalhas: sala.falhasSessao.length,
                 tempoFalhaSegundos: sala.tempoFalha,
@@ -1166,19 +1211,9 @@
                 atualizadoEm: fimAula.toISOString()
             });
 
-            // Ao encerrar a aula, o acesso do aluno à bancada é removido automaticamente.
-            if (alunoDaSala) {
-                await firebasePatch(`Alunos/${ALUNO_PADRAO_ID}`, {
-                    ativo: false,
-                    salaId: '',
-                    salaNome: '',
-                    bancadaId: '',
-                    bancadaNumero: 0,
-                    firebaseKey: '',
-                    professorId: '',
-                    professor: '',
-                    atualizadoEm: fimAula.toISOString()
-                });
+            // Ao encerrar a aula, remove automaticamente todos os alunos desta sala.
+            for (const aluno of alunosDaSala) {
+                await desativarAluno(aluno.usuario);
             }
 
             sala.sessionStartTime = null;
@@ -1510,14 +1545,6 @@
                 atualizarAlunoFirebase();
             }
 
-            if (currentUser && currentUser.role === 'professor' && agora - ultimoSyncAluno >= 2000) {
-                ultimoSyncAluno = agora;
-                const entryProf = getSalaDoProf();
-                if (entryProf && !document.getElementById('tela-minha-sala').classList.contains('hidden')) {
-                    renderGestaoAlunoProfessor(entryProf[0], entryProf[1]);
-                }
-            }
-
             if (currentUser && currentUser.role === 'coordenador' && agora - ultimoSyncCoordenador >= 2000) {
                 ultimoSyncCoordenador = agora;
                 atualizarCoordenadorFirebase();
@@ -1531,6 +1558,15 @@
                 ultimoSyncRelatorios = agora;
                 renderRelatorios();
             }
+
+            if (currentUser && currentUser.role === 'professor' && Date.now() - ultimoSyncAlunosProfessor >= 2000) {
+                ultimoSyncAlunosProfessor = Date.now();
+                const salaEntry = getSalaDoProf();
+                if (salaEntry && !document.getElementById('tela-minha-sala').classList.contains('hidden')) {
+                    carregarSeletoresAlunos(salaEntry[0], salaEntry[1]);
+                }
+            }
+
         }
     </script>
 </body>
