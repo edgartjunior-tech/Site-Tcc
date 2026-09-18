@@ -239,49 +239,71 @@
         }
 
         // --- FIREBASE REALTIME DATABASE ---
-        // Ponte entre o site e o ESP32.
-        // O site grava "Ligar" ou "Desligar" nas chaves Bancada1 e Bancada2.
+        // Estrutura usada no Firebase:
+        // Bancada1/{ comando, tempo, tempoRestante, estado }
+        // Bancada2/{ comando, tempo, tempoRestante, estado }
+        // Sistema/{ emergencia }
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
 
-        async function enviarComandoFirebase(idBancada, comando) {
-            const mapaBancadas = {
-                'L1B1': 'Bancada1',
-                'L1B2': 'Bancada2'
-            };
+        // O protótipo físico terá apenas as 2 bancadas do Laboratório 1.
+        const MAPA_BANCADAS_FIREBASE = {
+            'L1B1': 'Bancada1',
+            'L1B2': 'Bancada2'
+        };
 
-            const bancadaFirebase = mapaBancadas[idBancada];
-
-            // Por enquanto somente as duas bancadas do Laboratório 1
-            // estão ligadas ao Firebase/ESP32.
-            if (!bancadaFirebase) {
-                console.log('Bancada ainda não conectada ao Firebase:', idBancada);
-                return;
-            }
-
-            const url = `${FIREBASE_URL}/${bancadaFirebase}.json`;
-
+        async function firebasePatch(caminho, dados) {
             try {
-                const resposta = await fetch(url, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(comando)
+                const resposta = await fetch(`${FIREBASE_URL}/${caminho}.json`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados)
                 });
 
                 if (!resposta.ok) {
-                    throw new Error(`Erro Firebase: ${resposta.status}`);
+                    throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
                 }
 
-                console.log(`${bancadaFirebase} -> ${comando}`);
+                console.log(`[Firebase] ${caminho}`, dados);
+                return true;
             } catch (erro) {
-                console.error('Erro ao enviar comando ao Firebase:', erro);
+                console.error('[Firebase] Falha de comunicação:', erro);
+                return false;
             }
         }
 
-        function desligarBancadasLab1NoFirebase() {
-            enviarComandoFirebase('L1B1', 'Desligar');
-            enviarComandoFirebase('L1B2', 'Desligar');
+        async function enviarEstadoBancadaFirebase(idBancada, comando, tempoSegundos = 0) {
+            const nomeFirebase = MAPA_BANCADAS_FIREBASE[idBancada];
+            if (!nomeFirebase) return;
+
+            const ligada = comando === 'Ligar';
+            const tempo = ligada ? Number(tempoSegundos || 0) : 0;
+
+            await firebasePatch(nomeFirebase, {
+                comando: comando,
+                tempo: tempo,
+                tempoRestante: tempo,
+                estado: ligada ? 'Ligada' : 'Desligada'
+            });
+        }
+
+        async function atualizarTempoRestanteFirebase(idBancada, tempoRestante) {
+            const nomeFirebase = MAPA_BANCADAS_FIREBASE[idBancada];
+            if (!nomeFirebase) return;
+
+            await firebasePatch(nomeFirebase, {
+                tempoRestante: Math.max(0, Number(tempoRestante || 0))
+            });
+        }
+
+        async function enviarEmergenciaFirebase(ativa) {
+            await firebasePatch('Sistema', {
+                emergencia: Boolean(ativa)
+            });
+        }
+
+        function desligarTodasBancadasFirebase() {
+            enviarEstadoBancadaFirebase('L1B1', 'Desligar', 0);
+            enviarEstadoBancadaFirebase('L1B2', 'Desligar', 0);
         }
 
         // --- INTEGRAÇÃO WEBHOOK PARA TESTE ---
@@ -546,13 +568,12 @@
                 sala.tempoFalha = 0;
                 sala.bancadasUsadas.clear();
             } else {
-                sala.bancadas.forEach(b => { b.status = false; b.time = 0; b.elapsedTime = 0; });
-
-                // Ao fechar a válvula mestre do Laboratório 1, garante que
-                // as duas bancadas também sejam desligadas no Firebase.
-                if (sala === salas.lab1) {
-                    desligarBancadasLab1NoFirebase();
-                }
+                sala.bancadas.forEach(b => {
+                    b.status = false;
+                    b.time = 0;
+                    b.elapsedTime = 0;
+                    enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
+                });
             }
             renderMinhaSalaUI();
         }
@@ -609,27 +630,27 @@
                     chartInstances[`chart-${idBancada}`].update();
                 }
 
-                // Envia o comando para o Firebase (site -> Firebase -> ESP32)
-                enviarComandoFirebase(idBancada, 'Ligar');
-
                 enviarSinalWebhook('LIGAR_BANCADA', { 
                     sala: sala.nome, 
                     bancada: idBancada, 
                     tempoMinutos: val || 'Ilimitado' 
                 });
 
+                // Envia comando, tempo e estado para o Firebase.
+                enviarEstadoBancadaFirebase(idBancada, 'Ligar', b.time);
+
             } else {
                 b.time = 0;
                 btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
                 card.className = 'border rounded-xl p-5 bg-white';
 
-                // Envia o comando para o Firebase (site -> Firebase -> ESP32)
-                enviarComandoFirebase(idBancada, 'Desligar');
-
                 enviarSinalWebhook('DESLIGAR_BANCADA', { 
                     sala: sala.nome, 
                     bancada: idBancada 
                 });
+
+                // Informa ao Firebase que a bancada foi desligada.
+                enviarEstadoBancadaFirebase(idBancada, 'Desligar', 0);
             }
         }
 
@@ -664,7 +685,11 @@
             });
             
             sala.masterValve = false;
-            sala.bancadas.forEach(b => { b.status = false; b.time = 0; });
+            sala.bancadas.forEach(b => {
+                b.status = false;
+                b.time = 0;
+                enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
+            });
             alert("Atividade encerrada e relatório gerado para o Coordenador.");
             renderMinhaSalaUI();
         }
@@ -740,13 +765,14 @@
 
         function sincronizarTravaRemota(travar) {
             systemLocked = travar;
-            
+
+            // Mantém o estado global de emergência também no Firebase.
+            enviarEmergenciaFirebase(travar);
+
             if (travar) {
+                // Em uma emergência, as duas bancadas conectadas recebem Desligar.
+                desligarTodasBancadasFirebase();
                 emergencyStartTime = new Date();
-
-                // Em uma trava global, envia Desligar para as duas bancadas físicas.
-                desligarBancadasLab1NoFirebase();
-
                 Object.values(salas).forEach(s => {
                     if(s.masterValve) s.houveFalha = true;
                     s.bancadas.forEach(b => { b.status = false; b.time = 0; }); 
@@ -789,16 +815,21 @@
 
                     if (b.status && b.time > 0) {
                         b.time--;
+
+                        // Atualiza o Firebase a cada 5 segundos para não fazer uma requisição por segundo.
+                        if (b.time > 0 && b.time % 5 === 0) {
+                            atualizarTempoRestanteFirebase(b.id, b.time);
+                        }
+
                         if (b.time <= 0) {
-                            b.status = false;
-
-                            // Se o tempo acabar, avisa o Firebase para o ESP32 desligar.
-                            enviarComandoFirebase(b.id, 'Desligar');
-
+                            b.status = false; 
                             const btn = document.getElementById(`btn-${b.id}`);
                             const card = document.getElementById(`card-${b.id}`);
                             if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
                             if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
+
+                            // Tempo terminou: manda desligar para o Firebase.
+                            enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
                         }
                     }
                     
