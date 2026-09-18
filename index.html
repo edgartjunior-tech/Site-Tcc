@@ -246,7 +246,7 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v4 limpo carregado');
+        console.log('PneumaticSys Firebase v5 salas sincronizadas carregado');
 
         // O protótipo físico terá apenas as 2 bancadas do Laboratório 1.
         const MAPA_BANCADAS_FIREBASE = {
@@ -351,6 +351,42 @@
             return data.toLocaleString('pt-BR');
         }
 
+        // Sincroniza as designações de professores e o estado das salas com o Firebase.
+        // Isso permite que uma atribuição feita pelo coordenador em um computador
+        // apareça quando o professor entrar em outro computador.
+        async function sincronizarSalasFirebase() {
+            const dadosSalas = await firebaseGet('Salas');
+            if (!dadosSalas) return false;
+
+            let atribuicaoMudou = false;
+
+            for (const [idSala, salaLocal] of Object.entries(salas)) {
+                const salaRemota = dadosSalas[idSala];
+                if (!salaRemota) continue;
+
+                const novoProfessor = salaRemota.professor || 'Nenhum';
+                if (salaLocal.professorDesignado !== novoProfessor) {
+                    salaLocal.professorDesignado = novoProfessor;
+                    atribuicaoMudou = true;
+                }
+
+                if (typeof salaRemota.ativa === 'boolean') {
+                    salaLocal.masterValve = salaRemota.ativa;
+                }
+
+                if (salaRemota.nome) {
+                    salaLocal.nome = salaRemota.nome;
+                }
+
+                if (salaRemota.inicioAula) {
+                    const inicio = new Date(salaRemota.inicioAula);
+                    if (!Number.isNaN(inicio.getTime())) salaLocal.sessionStartTime = inicio;
+                }
+            }
+
+            return atribuicaoMudou;
+        }
+
         // Aluno lê diretamente o Firebase, então funciona em outro computador/celular.
         async function atualizarAlunoFirebase() {
             if (!currentUser || currentUser.role !== 'aluno') return;
@@ -390,9 +426,15 @@
             const b1 = dados.Bancada1 || {};
             const b2 = dados.Bancada2 || {};
             const sala1 = (dados.Salas && dados.Salas.lab1) || {};
+            const sala2 = (dados.Salas && dados.Salas.lab2) || {};
 
             salas.lab1.masterValve = Boolean(sala1.ativa);
+            salas.lab2.masterValve = Boolean(sala2.ativa);
             if (sala1.professor) salas.lab1.professorDesignado = sala1.professor;
+            if (sala2.professor) salas.lab2.professorDesignado = sala2.professor;
+            if (sala1.nome) salas.lab1.nome = sala1.nome;
+            if (sala2.nome) salas.lab2.nome = sala2.nome;
+
             salas.lab1.bancadas[0].status = b1.estado === 'Ligada';
             salas.lab1.bancadas[0].time = Number(b1.tempoRestante || 0);
             salas.lab1.bancadas[1].status = b2.estado === 'Ligada';
@@ -471,6 +513,7 @@
         let ultimoSyncAluno = 0;
         let ultimoSyncCoordenador = 0;
         let ultimoSyncRelatorios = 0;
+        let ultimoSyncSalas = 0;
         
         const relatorios = [];
         const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
@@ -505,8 +548,13 @@
             }
         }
 
-        function efetivarLogin(user) {
+        async function efetivarLogin(user) {
             currentUser = user;
+
+            // Antes de montar a tela, busca no Firebase qual professor está em cada sala.
+            // Assim a designação feita pelo coordenador funciona em outro computador.
+            await sincronizarSalasFirebase();
+
             document.getElementById('tela-login').classList.add('hidden');
             document.getElementById('app-container').classList.remove('hidden');
 
@@ -1158,6 +1206,23 @@
             }
 
             const agora = Date.now();
+
+            // Mantém a atribuição de salas sincronizada entre computadores.
+            if (currentUser && agora - ultimoSyncSalas >= 2000) {
+                ultimoSyncSalas = agora;
+                sincronizarSalasFirebase().then((atribuicaoMudou) => {
+                    if (!atribuicaoMudou || !currentUser) return;
+
+                    if (currentUser.role === 'professor' && !document.getElementById('tela-minha-sala').classList.contains('hidden')) {
+                        renderMinhaSalaUI();
+                    }
+
+                    if (currentUser.role === 'coordenador') {
+                        if (!document.getElementById('tela-atribuicao').classList.contains('hidden')) renderAtribuicao();
+                        if (!document.getElementById('tela-dashboard').classList.contains('hidden')) updateDashboard();
+                    }
+                });
+            }
 
             if (currentUser && currentUser.role === 'aluno' && agora - ultimoSyncAluno >= 2000) {
                 ultimoSyncAluno = agora;
