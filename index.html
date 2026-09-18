@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -235,6 +236,52 @@
                     this.close();
                 };
             }
+        }
+
+        // --- FIREBASE REALTIME DATABASE ---
+        // Ponte entre o site e o ESP32.
+        // O site grava "Ligar" ou "Desligar" nas chaves Bancada1 e Bancada2.
+        const FIREBASE_URL = 'https://tcc-pneumatica-default-rtdb.firebaseio.com';
+
+        async function enviarComandoFirebase(idBancada, comando) {
+            const mapaBancadas = {
+                'L1B1': 'Bancada1',
+                'L1B2': 'Bancada2'
+            };
+
+            const bancadaFirebase = mapaBancadas[idBancada];
+
+            // Por enquanto somente as duas bancadas do Laboratório 1
+            // estão ligadas ao Firebase/ESP32.
+            if (!bancadaFirebase) {
+                console.log('Bancada ainda não conectada ao Firebase:', idBancada);
+                return;
+            }
+
+            const url = `${FIREBASE_URL}/${bancadaFirebase}.json`;
+
+            try {
+                const resposta = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(comando)
+                });
+
+                if (!resposta.ok) {
+                    throw new Error(`Erro Firebase: ${resposta.status}`);
+                }
+
+                console.log(`${bancadaFirebase} -> ${comando}`);
+            } catch (erro) {
+                console.error('Erro ao enviar comando ao Firebase:', erro);
+            }
+        }
+
+        function desligarBancadasLab1NoFirebase() {
+            enviarComandoFirebase('L1B1', 'Desligar');
+            enviarComandoFirebase('L1B2', 'Desligar');
         }
 
         // --- INTEGRAÇÃO WEBHOOK PARA TESTE ---
@@ -500,6 +547,12 @@
                 sala.bancadasUsadas.clear();
             } else {
                 sala.bancadas.forEach(b => { b.status = false; b.time = 0; b.elapsedTime = 0; });
+
+                // Ao fechar a válvula mestre do Laboratório 1, garante que
+                // as duas bancadas também sejam desligadas no Firebase.
+                if (sala === salas.lab1) {
+                    desligarBancadasLab1NoFirebase();
+                }
             }
             renderMinhaSalaUI();
         }
@@ -556,6 +609,9 @@
                     chartInstances[`chart-${idBancada}`].update();
                 }
 
+                // Envia o comando para o Firebase (site -> Firebase -> ESP32)
+                enviarComandoFirebase(idBancada, 'Ligar');
+
                 enviarSinalWebhook('LIGAR_BANCADA', { 
                     sala: sala.nome, 
                     bancada: idBancada, 
@@ -566,6 +622,9 @@
                 b.time = 0;
                 btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
                 card.className = 'border rounded-xl p-5 bg-white';
+
+                // Envia o comando para o Firebase (site -> Firebase -> ESP32)
+                enviarComandoFirebase(idBancada, 'Desligar');
 
                 enviarSinalWebhook('DESLIGAR_BANCADA', { 
                     sala: sala.nome, 
@@ -684,6 +743,10 @@
             
             if (travar) {
                 emergencyStartTime = new Date();
+
+                // Em uma trava global, envia Desligar para as duas bancadas físicas.
+                desligarBancadasLab1NoFirebase();
+
                 Object.values(salas).forEach(s => {
                     if(s.masterValve) s.houveFalha = true;
                     s.bancadas.forEach(b => { b.status = false; b.time = 0; }); 
@@ -727,7 +790,11 @@
                     if (b.status && b.time > 0) {
                         b.time--;
                         if (b.time <= 0) {
-                            b.status = false; 
+                            b.status = false;
+
+                            // Se o tempo acabar, avisa o Firebase para o ESP32 desligar.
+                            enviarComandoFirebase(b.id, 'Desligar');
+
                             const btn = document.getElementById(`btn-${b.id}`);
                             const card = document.getElementById(`card-${b.id}`);
                             if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
