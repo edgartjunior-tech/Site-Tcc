@@ -46,6 +46,7 @@
             </form>
 
             <div class="mt-6 text-xs text-slate-400 text-left bg-slate-50 p-3 rounded">
+                <div class="mb-2 font-bold text-blue-600">Versão 9 — aluno gerenciado pelo professor</div>
                 <strong>Logins de teste (Senha: 123):</strong><br>
                 Coordenador: <em>coordenador</em><br>
                 Professores: <em>souza</em>, <em>silva</em>, <em>mendes</em><br>
@@ -143,7 +144,7 @@
                 </div>
 
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-6 text-sm text-blue-800">
-                    O Coordenador define apenas os professores responsáveis por cada sala. A atribuição do aluno à bancada é feita pelo próprio professor em <strong>Minha Sala</strong>.
+                    <strong>Versão 9:</strong> o Coordenador gerencia somente Professor → Sala. O aluno <strong>não é atribuído nesta tela</strong>; a bancada do aluno é definida pelo professor dentro de <strong>Minha Sala</strong>.
                 </div>
             </div>
 
@@ -171,8 +172,8 @@
                     <div id="painel-aluno-professor" class="bg-white p-5 rounded-xl border border-slate-100 mb-6">
                         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                             <div>
-                                <h3 class="font-bold text-slate-800"><i class="fa-solid fa-user-graduate text-blue-600 mr-2"></i>Aluno da aula</h3>
-                                <p class="text-sm text-slate-500 mt-1">O professor define em qual bancada o usuário <strong>aluno</strong> poderá entrar.</p>
+                                <h3 class="font-bold text-slate-800"><i class="fa-solid fa-user-graduate text-blue-600 mr-2"></i>Gerenciar aluno desta sala</h3>
+                                <p class="text-sm text-slate-500 mt-1">Somente o professor responsável por esta sala define em qual bancada o usuário <strong>aluno</strong> poderá entrar.</p>
                                 <div id="status-aluno-professor" class="text-sm font-medium mt-2 text-slate-600">Carregando atribuição...</div>
                             </div>
                             <div id="botoes-aluno-professor" class="flex flex-wrap gap-2"></div>
@@ -267,7 +268,7 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v8 professor gerencia aluno carregado');
+        console.log('PneumaticSys Firebase v9 professor gerencia aluno carregado');
 
         // Bancadas lógicas do sistema. O ESP32 do protótipo pode usar apenas Bancada1/Bancada2;
         // Bancada3/Bancada4 permitem que a Sala 2 também funcione na simulação web.
