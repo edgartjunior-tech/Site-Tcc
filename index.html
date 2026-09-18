@@ -246,7 +246,7 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v5 salas sincronizadas carregado');
+        console.log('PneumaticSys Firebase v6 salas sincronizadas carregado');
 
         // O protótipo físico terá apenas as 2 bancadas do Laboratório 1.
         const MAPA_BANCADAS_FIREBASE = {
@@ -261,7 +261,7 @@
 
         async function firebaseGet(caminho = '') {
             try {
-                const resposta = await fetch(firebaseURL(caminho));
+                const resposta = await fetch(`${firebaseURL(caminho)}?ts=${Date.now()}`, { cache: 'no-store' });
                 if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
                 return await resposta.json();
             } catch (erro) {
@@ -365,8 +365,11 @@
                 if (!salaRemota) continue;
 
                 const novoProfessor = salaRemota.professor || 'Nenhum';
-                if (salaLocal.professorDesignado !== novoProfessor) {
+                const novoProfessorId = salaRemota.professorId || professorIdPorNome(novoProfessor);
+
+                if (salaLocal.professorDesignado !== novoProfessor || salaLocal.professorIdDesignado !== novoProfessorId) {
                     salaLocal.professorDesignado = novoProfessor;
+                    salaLocal.professorIdDesignado = novoProfessorId;
                     atribuicaoMudou = true;
                 }
 
@@ -518,14 +521,25 @@
         const relatorios = [];
         const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
 
+        const PROFESSOR_ID_POR_NOME = {
+            'Prof. Souza': 'souza',
+            'Prof. Silva': 'silva',
+            'Prof. Mendes': 'mendes',
+            'Nenhum': ''
+        };
+
+        function professorIdPorNome(nome) {
+            return PROFESSOR_ID_POR_NOME[nome] || '';
+        }
+
         const salas = {
             lab1: { 
-                nome: 'Laboratório 1', professorDesignado: 'Prof. Souza',
+                nome: 'Laboratório 1', professorDesignado: 'Prof. Souza', professorIdDesignado: 'souza',
                 masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(), falhasSessao: [],
                 bancadas: [{id: 'L1B1', status: false, time: 0, elapsedTime: 0}, {id: 'L1B2', status: false, time: 0, elapsedTime: 0}] 
             },
             lab2: { 
-                nome: 'Laboratório 2', professorDesignado: 'Nenhum', 
+                nome: 'Laboratório 2', professorDesignado: 'Nenhum', professorIdDesignado: '', 
                 masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(), falhasSessao: [],
                 bancadas: [{id: 'L2B1', status: false, time: 0, elapsedTime: 0}, {id: 'L2B2', status: false, time: 0, elapsedTime: 0}] 
             }
@@ -615,9 +629,15 @@
             document.querySelectorAll('.tela-conteudo').forEach(el => el.classList.add('hidden'));
             document.getElementById(`tela-${tela}`).classList.remove('hidden');
             
-            if(tela === 'dashboard') updateDashboard();
-            if(tela === 'atribuicao') renderAtribuicao();
-            if(tela === 'minha-sala') renderMinhaSalaUI();
+            if(tela === 'dashboard') {
+                sincronizarSalasFirebase().then(() => updateDashboard());
+            }
+            if(tela === 'atribuicao') {
+                sincronizarSalasFirebase().then(() => renderAtribuicao());
+            }
+            if(tela === 'minha-sala') {
+                sincronizarSalasFirebase().then(() => renderMinhaSalaUI());
+            }
             if(tela === 'relatorios') renderRelatorios();
             if(tela === 'aluno') {
                 initChart('chart-aluno');
@@ -676,25 +696,50 @@
             }
         }
         
-        function updateDesignacao(salaId, profName) {
+        async function updateDesignacao(salaId, profName) {
+            const professorAnterior = salas[salaId].professorDesignado;
+            const professorIdAnterior = salas[salaId].professorIdDesignado || '';
+            const novoProfessorId = professorIdPorNome(profName);
+
+            // Atualiza a tela imediatamente, mas só confirma depois que o Firebase aceitar.
             salas[salaId].professorDesignado = profName;
+            salas[salaId].professorIdDesignado = novoProfessorId;
+
             if(profName !== 'Nenhum') {
                 salas[salaId].masterValve = false;
                 salas[salaId].bancadas.forEach(b => b.status = false);
             }
 
-            firebasePatch(`Salas/${salaId}`, {
+            const salvo = await firebasePatch(`Salas/${salaId}`, {
                 nome: salas[salaId].nome,
                 professor: profName,
+                professorId: novoProfessorId,
                 ativa: false,
                 atualizadoEm: new Date().toISOString()
             });
+
+            if (!salvo) {
+                salas[salaId].professorDesignado = professorAnterior;
+                salas[salaId].professorIdDesignado = professorIdAnterior;
+                alert('Não foi possível salvar a atribuição no Firebase. Verifique a conexão.');
+                renderAtribuicao();
+                return;
+            }
+
+            // Lê novamente do Firebase para confirmar que outro computador verá a mesma informação.
+            await sincronizarSalasFirebase();
+            renderAtribuicao();
+            updateDashboard();
+            console.log(`[Salas] ${salaId} confirmado no Firebase para ${profName} (${novoProfessorId || 'nenhum'})`);
         }
+
 
         // --- PROFESSOR: MINHA SALA ---
         function getSalaDoProf() {
             if(currentUser.role !== 'professor') return null;
-            return Object.entries(salas).find(([id, s]) => s.professorDesignado === currentUser.nome);
+            return Object.entries(salas).find(([id, s]) =>
+                s.professorIdDesignado === currentUser.id || s.professorDesignado === currentUser.nome
+            );
         }
 
         function renderMinhaSalaUI() {
@@ -748,6 +793,7 @@
                 firebasePatch(`Salas/${idSala}`, {
                     nome: sala.nome,
                     professor: sala.professorDesignado,
+                    professorId: sala.professorIdDesignado || professorIdPorNome(sala.professorDesignado),
                     ativa: true,
                     inicioAula: sala.sessionStartTime.toISOString(),
                     fimAula: '',
@@ -1208,7 +1254,7 @@
             const agora = Date.now();
 
             // Mantém a atribuição de salas sincronizada entre computadores.
-            if (currentUser && agora - ultimoSyncSalas >= 2000) {
+            if (currentUser && agora - ultimoSyncSalas >= 1000) {
                 ultimoSyncSalas = agora;
                 sincronizarSalasFirebase().then((atribuicaoMudou) => {
                     if (!atribuicaoMudou || !currentUser) return;
