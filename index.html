@@ -239,12 +239,14 @@
         }
 
         // --- FIREBASE REALTIME DATABASE ---
-        // Estrutura usada no Firebase:
-        // Bancada1/{ comando, tempo, tempoRestante, estado }
-        // Bancada2/{ comando, tempo, tempoRestante, estado }
-        // Sistema/{ emergencia }
+        // Firebase agora centraliza:
+        // - Bancada1 / Bancada2: comando, estado e tempo
+        // - Sistema: emergência e estado geral
+        // - Salas: aula atual / professor
+        // - Falhas: histórico com início, fim e duração
+        // - Relatorios: relatórios encerrados pelo professor
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v2 estruturado carregado');
+        console.log('PneumaticSys Firebase v3 completo carregado');
 
         // O protótipo físico terá apenas as 2 bancadas do Laboratório 1.
         const MAPA_BANCADAS_FIREBASE = {
@@ -252,23 +254,55 @@
             'L1B2': 'Bancada2'
         };
 
+        function firebaseURL(caminho = '') {
+            const limpo = String(caminho || '').replace(/^\/+|\/+$/g, '');
+            return limpo ? `${FIREBASE_URL}/${limpo}.json` : `${FIREBASE_URL}/.json`;
+        }
+
+        async function firebaseGet(caminho = '') {
+            try {
+                const resposta = await fetch(firebaseURL(caminho));
+                if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
+                return await resposta.json();
+            } catch (erro) {
+                console.error('[Firebase] Erro de leitura:', erro);
+                return null;
+            }
+        }
+
         async function firebasePatch(caminho, dados) {
             try {
-                const resposta = await fetch(`${FIREBASE_URL}/${caminho}.json`, {
+                const resposta = await fetch(firebaseURL(caminho), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(dados)
                 });
 
-                if (!resposta.ok) {
-                    throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
-                }
-
-                console.log(`[Firebase] ${caminho}`, dados);
+                if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
+                console.log(`[Firebase PATCH] ${caminho}`, dados);
                 return true;
             } catch (erro) {
                 console.error('[Firebase] Falha de comunicação:', erro);
                 return false;
+            }
+        }
+
+        // POST cria uma chave única automaticamente no Realtime Database.
+        async function firebasePost(caminho, dados) {
+            try {
+                const resposta = await fetch(firebaseURL(caminho), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados)
+                });
+
+                if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
+                const retorno = await resposta.json();
+                console.log(`[Firebase POST] ${caminho}`, retorno.name, dados);
+                return retorno.name || null;
+            } catch (erro) {
+                console.error('[Firebase] Erro ao criar registro:', erro);
+                return null;
             }
         }
 
@@ -280,10 +314,11 @@
             const tempo = ligada ? Number(tempoSegundos || 0) : 0;
 
             await firebasePatch(nomeFirebase, {
-                comando: comando,
-                tempo: tempo,
+                comando,
+                tempo,
                 tempoRestante: tempo,
-                estado: ligada ? 'Ligada' : 'Desligada'
+                estado: ligada ? 'Ligada' : 'Desligada',
+                atualizadoEm: new Date().toISOString()
             });
         }
 
@@ -292,19 +327,94 @@
             if (!nomeFirebase) return;
 
             await firebasePatch(nomeFirebase, {
-                tempoRestante: Math.max(0, Number(tempoRestante || 0))
+                tempoRestante: Math.max(0, Number(tempoRestante || 0)),
+                atualizadoEm: new Date().toISOString()
             });
         }
 
         async function enviarEmergenciaFirebase(ativa) {
             await firebasePatch('Sistema', {
-                emergencia: Boolean(ativa)
+                emergencia: Boolean(ativa),
+                atualizadoEm: new Date().toISOString()
             });
         }
 
         function desligarTodasBancadasFirebase() {
             enviarEstadoBancadaFirebase('L1B1', 'Desligar', 0);
             enviarEstadoBancadaFirebase('L1B2', 'Desligar', 0);
+        }
+
+        function formatarDataHoraISO(valor) {
+            if (!valor) return '-';
+            const data = new Date(valor);
+            if (Number.isNaN(data.getTime())) return valor;
+            return data.toLocaleString('pt-BR');
+        }
+
+        // Aluno lê diretamente o Firebase, então funciona em outro computador/celular.
+        async function atualizarAlunoFirebase() {
+            if (!currentUser || currentUser.role !== 'aluno') return;
+
+            const dados = await firebaseGet('');
+            if (!dados) return;
+
+            const b = dados.Bancada1 || {};
+            const sistema = dados.Sistema || {};
+            const isOn = b.estado === 'Ligada' && !sistema.emergencia;
+            const restante = Number(b.tempoRestante || 0);
+            const tempoDefinido = Number(b.tempo || 0);
+
+            document.getElementById('aluno-bar').innerText = isOn ? '8.1 BAR' : '0.0 BAR';
+            document.getElementById('aluno-timer').innerText = restante > 0
+                ? `${restante}s`
+                : (isOn && tempoDefinido === 0 ? 'Ilimitado' : '--:--');
+
+            if (chartInstances['chart-aluno']) {
+                const c = chartInstances['chart-aluno'];
+                c.data.labels.shift();
+                c.data.labels.push(new Date().toLocaleTimeString('pt-BR'));
+                c.data.datasets[0].data.shift();
+                c.data.datasets[0].data.push(isOn ? 8.1 : 0);
+                c.update();
+            }
+        }
+
+        // Coordenador lê o estado global do Firebase, inclusive em outro navegador.
+        async function atualizarCoordenadorFirebase() {
+            if (!currentUser || currentUser.role !== 'coordenador') return;
+
+            const dados = await firebaseGet('');
+            if (!dados) return;
+
+            const sistema = dados.Sistema || {};
+            const b1 = dados.Bancada1 || {};
+            const b2 = dados.Bancada2 || {};
+            const sala1 = (dados.Salas && dados.Salas.lab1) || {};
+
+            salas.lab1.masterValve = Boolean(sala1.ativa);
+            if (sala1.professor) salas.lab1.professorDesignado = sala1.professor;
+            salas.lab1.bancadas[0].status = b1.estado === 'Ligada';
+            salas.lab1.bancadas[0].time = Number(b1.tempoRestante || 0);
+            salas.lab1.bancadas[1].status = b2.estado === 'Ligada';
+            salas.lab1.bancadas[1].time = Number(b2.tempoRestante || 0);
+
+            const emergenciaRemota = Boolean(sistema.emergencia);
+            if (emergenciaRemota && sistema.falhaInicio) {
+                emergencyStartTime = new Date(sistema.falhaInicio);
+            }
+
+            if (emergenciaRemota !== systemLocked) {
+                sincronizarTravaRemota(emergenciaRemota, true);
+                if (emergenciaRemota) {
+                    dispararNotificacaoDesktop('🚨 FALHA CRÍTICA', 'Uma emergência foi registrada no laboratório.');
+                } else {
+                    dispararNotificacaoDesktop('✅ SISTEMA NORMALIZADO', 'A emergência registrada no laboratório foi resolvida.');
+                }
+            }
+
+            if (!document.getElementById('tela-dashboard').classList.contains('hidden')) {
+                updateDashboard();
+            }
         }
 
         // --- INTEGRAÇÃO WEBHOOK PARA TESTE ---
@@ -333,12 +443,12 @@
                 const info = JSON.parse(e.newValue);
                 if (currentUser && currentUser.role === 'coordenador') {
                     dispararNotificacaoDesktop("🚨 FALHA CRÍTICA", `O ${info.prof} travou o sistema de ar por segurança! Verifique a situação imediatamente.`);
-                    sincronizarTravaRemota(true);
+                    sincronizarTravaRemota(true, true);
                 }
             } else if (e.key === 'alerta_emergencia_resolvido') {
                 if (currentUser && currentUser.role === 'coordenador') {
                     dispararNotificacaoDesktop("✅ SISTEMA NORMALIZADO", "O problema foi resolvido pelo professor e o sistema foi destravado.");
-                    sincronizarTravaRemota(false);
+                    sincronizarTravaRemota(false, true);
                 }
             }
         });
@@ -355,8 +465,12 @@
         let currentUser = null;
         let systemLocked = false;
         let emergencyStartTime = null;
+        let falhaFirebaseAtualId = null;
         let chartInstances = {};
         let intervals = {};
+        let ultimoSyncAluno = 0;
+        let ultimoSyncCoordenador = 0;
+        let ultimoSyncRelatorios = 0;
         
         const relatorios = [];
         const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
@@ -364,12 +478,12 @@
         const salas = {
             lab1: { 
                 nome: 'Laboratório 1', professorDesignado: 'Prof. Souza',
-                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(),
+                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(), falhasSessao: [],
                 bancadas: [{id: 'L1B1', status: false, time: 0, elapsedTime: 0}, {id: 'L1B2', status: false, time: 0, elapsedTime: 0}] 
             },
             lab2: { 
                 nome: 'Laboratório 2', professorDesignado: 'Nenhum', 
-                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(),
+                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(), falhasSessao: [],
                 bancadas: [{id: 'L2B1', status: false, time: 0, elapsedTime: 0}, {id: 'L2B2', status: false, time: 0, elapsedTime: 0}] 
             }
         };
@@ -405,6 +519,9 @@
             solicitarPermissaoNotificacao();
             
             if(!intervals.global) intervals.global = setInterval(globalTick, 1000);
+
+            if (currentUser.role === 'aluno') atualizarAlunoFirebase();
+            if (currentUser.role === 'coordenador') atualizarCoordenadorFirebase();
             
             document.getElementById('input-usuario').value = '';
             document.getElementById('input-senha').value = '';
@@ -454,7 +571,10 @@
             if(tela === 'atribuicao') renderAtribuicao();
             if(tela === 'minha-sala') renderMinhaSalaUI();
             if(tela === 'relatorios') renderRelatorios();
-            if(tela === 'aluno') initChart('chart-aluno');
+            if(tela === 'aluno') {
+                initChart('chart-aluno');
+                setTimeout(atualizarAlunoFirebase, 100);
+            }
         }
 
         // --- DASHBOARD GERAL ---
@@ -514,6 +634,13 @@
                 salas[salaId].masterValve = false;
                 salas[salaId].bancadas.forEach(b => b.status = false);
             }
+
+            firebasePatch(`Salas/${salaId}`, {
+                nome: salas[salaId].nome,
+                professor: profName,
+                ativa: false,
+                atualizadoEm: new Date().toISOString()
+            });
         }
 
         // --- PROFESSOR: MINHA SALA ---
@@ -559,7 +686,7 @@
             if(systemLocked) return alert("Sistema travado devido a emergência!");
             const salaEntry = getSalaDoProf();
             if(!salaEntry) return;
-            const sala = salaEntry[1];
+            const [idSala, sala] = salaEntry;
             
             sala.masterValve = !sala.masterValve;
             
@@ -568,12 +695,27 @@
                 sala.houveFalha = false;
                 sala.tempoFalha = 0;
                 sala.bancadasUsadas.clear();
+                sala.falhasSessao = [];
+
+                firebasePatch(`Salas/${idSala}`, {
+                    nome: sala.nome,
+                    professor: sala.professorDesignado,
+                    ativa: true,
+                    inicioAula: sala.sessionStartTime.toISOString(),
+                    fimAula: '',
+                    atualizadoEm: new Date().toISOString()
+                });
             } else {
                 sala.bancadas.forEach(b => {
                     b.status = false;
                     b.time = 0;
                     b.elapsedTime = 0;
                     enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
+                });
+
+                firebasePatch(`Salas/${idSala}`, {
+                    ativa: false,
+                    atualizadoEm: new Date().toISOString()
                 });
             }
             renderMinhaSalaUI();
@@ -667,127 +809,290 @@
             });
         }
 
-        function encerrarAtividade() {
+        async function encerrarAtividade() {
             const entry = getSalaDoProf();
             if(!entry) return;
-            const sala = entry[1];
-            
-            const duracaoMs = new Date() - sala.sessionStartTime;
+            const [idSala, sala] = entry;
+
+            if (!sala.sessionStartTime) {
+                alert('A aula ainda não foi iniciada. Libere o ar da sala primeiro.');
+                return;
+            }
+
+            const fimAula = new Date();
+            const duracaoMs = fimAula - sala.sessionStartTime;
             const duracaoMin = Math.max(1, Math.floor(duracaoMs / 60000));
             const arrBancadas = Array.from(sala.bancadasUsadas);
-            const statusFalha = sala.houveFalha ? `<span class="text-red-600 font-bold">Sim (${sala.tempoFalha}s duração)</span>` : `<span class="text-green-600">Nenhuma falha</span>`;
 
-            relatorios.push({
-                data: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-                prof: sala.professorDesignado + ' / ' + sala.nome,
-                duracao: duracaoMin + ' min(s)',
-                bancadasLib: arrBancadas.length > 0 ? arrBancadas.join(', ') : 'Nenhuma',
-                status: statusFalha
-            });
-            
+            const relatorioFirebase = {
+                criadoEm: fimAula.toISOString(),
+                data: fimAula.toLocaleString('pt-BR'),
+                professor: sala.professorDesignado,
+                salaId: idSala,
+                sala: sala.nome,
+                inicioAula: sala.sessionStartTime.toISOString(),
+                fimAula: fimAula.toISOString(),
+                duracaoMinutos: duracaoMin,
+                bancadasUtilizadas: arrBancadas,
+                houveFalha: sala.houveFalha,
+                quantidadeFalhas: sala.falhasSessao.length,
+                tempoFalhaSegundos: sala.tempoFalha,
+                falhas: sala.falhasSessao.map(f => ({
+                    inicio: f.inicio || '',
+                    fim: f.fim || '',
+                    duracaoSegundos: Number(f.duracaoSegundos || 0),
+                    status: f.status || 'Resolvida'
+                }))
+            };
+
+            const idRelatorio = await firebasePost('Relatorios', relatorioFirebase);
+
             sala.masterValve = false;
             sala.bancadas.forEach(b => {
                 b.status = false;
                 b.time = 0;
                 enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
             });
-            alert("Atividade encerrada e relatório gerado para o Coordenador.");
+
+            await firebasePatch(`Salas/${idSala}`, {
+                ativa: false,
+                fimAula: fimAula.toISOString(),
+                atualizadoEm: fimAula.toISOString()
+            });
+
+            sala.sessionStartTime = null;
+
+            if (idRelatorio) {
+                alert('Atividade encerrada. O relatório foi salvo no Firebase e já pode ser visto pelo Coordenador.');
+            } else {
+                alert('Atividade encerrada, mas houve erro ao salvar o relatório no Firebase. Verifique o Console.');
+            }
+
             renderMinhaSalaUI();
         }
 
-        function renderRelatorios() {
+        async function carregarRelatoriosFirebase() {
+            const dados = await firebaseGet('Relatorios');
+            relatorios.length = 0;
+
+            if (!dados || typeof dados !== 'object') return relatorios;
+
+            Object.entries(dados).forEach(([id, r]) => {
+                if (!r || typeof r !== 'object' || !r.professor || !r.sala) return;
+                relatorios.push({ firebaseId: id, ...r });
+            });
+
+            relatorios.sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+            return relatorios;
+        }
+
+        function detalhesFalhasRelatorio(r) {
+            if (!r.houveFalha) {
+                return '<span class="text-green-600">Nenhuma falha</span>';
+            }
+
+            const falhas = Array.isArray(r.falhas) ? r.falhas : [];
+            if (falhas.length === 0) {
+                return `<span class="text-red-600 font-bold">Sim — ${Number(r.tempoFalhaSegundos || 0)}s</span>`;
+            }
+
+            return falhas.map((f, i) => {
+                const inicio = formatarDataHoraISO(f.inicio);
+                const fim = formatarDataHoraISO(f.fim);
+                const duracao = Number(f.duracaoSegundos || 0);
+                return `<div class="mb-1"><span class="text-red-600 font-bold">Falha ${i + 1}</span>: início ${inicio} | fim ${fim} | duração ${duracao}s</div>`;
+            }).join('');
+        }
+
+        async function renderRelatorios() {
             const tbody = document.getElementById('tabela-relatorios');
+            tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">Carregando relatórios do Firebase...</td></tr>`;
+
+            await carregarRelatoriosFirebase();
             tbody.innerHTML = '';
-            if(relatorios.length === 0) tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">Nenhum relatório gerado.</td></tr>`;
+
+            if(relatorios.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">Nenhum relatório salvo no Firebase.</td></tr>`;
+                return;
+            }
+
             relatorios.forEach(r => {
-                tbody.innerHTML += `<tr class="border-b">
-                    <td class="px-4 py-3">${r.data}</td><td class="px-4 py-3">${r.prof}</td><td class="px-4 py-3">${r.duracao}</td><td class="px-4 py-3">${r.bancadasLib}</td><td class="px-4 py-3">${r.status}</td>
+                const bancadas = Array.isArray(r.bancadasUtilizadas) && r.bancadasUtilizadas.length
+                    ? r.bancadasUtilizadas.join(', ')
+                    : 'Nenhuma';
+
+                tbody.innerHTML += `<tr class="border-b align-top">
+                    <td class="px-4 py-3">${r.data || formatarDataHoraISO(r.criadoEm)}</td>
+                    <td class="px-4 py-3">${r.professor} / ${r.sala}</td>
+                    <td class="px-4 py-3">${Number(r.duracaoMinutos || 0)} min(s)<br><span class="text-xs text-slate-400">${formatarDataHoraISO(r.inicioAula)} → ${formatarDataHoraISO(r.fimAula)}</span></td>
+                    <td class="px-4 py-3">${bancadas}</td>
+                    <td class="px-4 py-3">${detalhesFalhasRelatorio(r)}</td>
                 </tr>`;
             });
         }
 
-        function baixarRelatorioCSV() {
+        async function baixarRelatorioCSV() {
+            await carregarRelatoriosFirebase();
+
             if (relatorios.length === 0) {
-                alert("Não há relatórios para exportar.");
+                alert('Não há relatórios no Firebase para exportar.');
                 return;
             }
 
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Data;Professor / Sala;Tempo de Uso;Bancadas Utilizadas;Status de Falhas\n";
+            let csvContent = 'data:text/csv;charset=utf-8,';
+            csvContent += 'Data;Professor;Sala;Inicio da Aula;Fim da Aula;Tempo de Uso;Bancadas Utilizadas;Falhas\n';
 
             relatorios.forEach(r => {
-                const tempDiv = document.createElement("div");
-                tempDiv.innerHTML = r.status;
-                const statusLimpo = tempDiv.textContent || tempDiv.innerText || "";
+                const bancadas = Array.isArray(r.bancadasUtilizadas) ? r.bancadasUtilizadas.join(', ') : 'Nenhuma';
+                const falhas = Array.isArray(r.falhas) && r.falhas.length
+                    ? r.falhas.map((f, i) => `Falha ${i + 1}: inicio ${formatarDataHoraISO(f.inicio)}, fim ${formatarDataHoraISO(f.fim)}, duracao ${Number(f.duracaoSegundos || 0)}s`).join(' | ')
+                    : 'Nenhuma falha';
 
-                const row = `${r.data};${r.prof};${r.duracao};${r.bancadasLib};${statusLimpo}`;
-                csvContent += row + "\n";
+                const row = [
+                    r.data || formatarDataHoraISO(r.criadoEm),
+                    r.professor || '',
+                    r.sala || '',
+                    formatarDataHoraISO(r.inicioAula),
+                    formatarDataHoraISO(r.fimAula),
+                    `${Number(r.duracaoMinutos || 0)} min(s)`,
+                    bancadas,
+                    falhas
+                ].map(v => String(v).replaceAll(';', ',')).join(';');
+
+                csvContent += row + '\n';
             });
 
             const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "relatorio_pneumaticsys.csv");
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', 'relatorio_pneumaticsys.csv');
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
         // --- EMERGÊNCIA E NOTIFICAÇÃO ---
-        function acionarEmergencia() {
-            if(currentUser.role !== 'professor') return; 
-            
-            enviarSinalWebhook('EMERGENCIA_ACIONADA', { 
-                professor: currentUser.nome, 
-                status: 'SISTEMA_BLOQUEADO' 
+        async function acionarEmergencia() {
+            if(currentUser.role !== 'professor') return;
+            if (systemLocked) return;
+
+            const entry = getSalaDoProf();
+            if (!entry) return;
+            const [idSala, sala] = entry;
+            const inicio = new Date();
+            emergencyStartTime = inicio;
+
+            const registroFalha = {
+                salaId: idSala,
+                sala: sala.nome,
+                professor: currentUser.nome,
+                inicio: inicio.toISOString(),
+                fim: '',
+                duracaoSegundos: 0,
+                status: 'Em andamento'
+            };
+
+            falhaFirebaseAtualId = await firebasePost('Falhas', registroFalha);
+            sala.falhasSessao.push({
+                firebaseId: falhaFirebaseAtualId,
+                ...registroFalha
+            });
+
+            await firebasePatch('Sistema', {
+                emergencia: true,
+                falhaAtualId: falhaFirebaseAtualId || '',
+                falhaInicio: inicio.toISOString(),
+                atualizadoEm: inicio.toISOString()
+            });
+
+            enviarSinalWebhook('EMERGENCIA_ACIONADA', {
+                professor: currentUser.nome,
+                status: 'SISTEMA_BLOQUEADO'
             });
 
             localStorage.setItem('alerta_emergencia_disparado', JSON.stringify({ prof: currentUser.nome, time: Date.now() }));
-            
-            sincronizarTravaRemota(true);
-            dispararNotificacaoDesktop("🚨 FALHA CRÍTICA", "Sistema de ar travado por emergência. Verifique a sala imediatamente!");
+
+            sincronizarTravaRemota(true, true);
+            desligarTodasBancadasFirebase();
+            dispararNotificacaoDesktop('🚨 FALHA CRÍTICA', 'Sistema de ar travado por emergência. Verifique a sala imediatamente!');
             navigate('minha-sala');
         }
 
-        function resolverEmergencia() {
+        async function resolverEmergencia() {
             if(currentUser.role !== 'professor') {
-                alert("Acesso Negado: Apenas o Professor em sala pode destravar o sistema após verificar o problema.");
+                alert('Acesso Negado: Apenas o Professor em sala pode destravar o sistema após verificar o problema.');
                 return;
             }
 
-            const falhaDiff = Math.floor((new Date() - emergencyStartTime) / 1000);
-            Object.values(salas).forEach(s => { if(s.masterValve) s.tempoFalha += falhaDiff; });
+            if (!systemLocked || !emergencyStartTime) {
+                alert('Não há uma emergência ativa para resolver.');
+                return;
+            }
 
+            const fim = new Date();
+            const falhaDiff = Math.max(0, Math.floor((fim - emergencyStartTime) / 1000));
+            const entry = getSalaDoProf();
+
+            if (entry) {
+                const sala = entry[1];
+                sala.tempoFalha += falhaDiff;
+                const falhaAberta = [...sala.falhasSessao].reverse().find(f => f.status === 'Em andamento');
+                if (falhaAberta) {
+                    falhaAberta.fim = fim.toISOString();
+                    falhaAberta.duracaoSegundos = falhaDiff;
+                    falhaAberta.status = 'Resolvida';
+                }
+            }
+
+            if (falhaFirebaseAtualId) {
+                await firebasePatch(`Falhas/${falhaFirebaseAtualId}`, {
+                    fim: fim.toISOString(),
+                    duracaoSegundos: falhaDiff,
+                    status: 'Resolvida'
+                });
+            }
+
+            await firebasePatch('Sistema', {
+                emergencia: false,
+                falhaAtualId: '',
+                falhaInicio: '',
+                ultimaFalhaFim: fim.toISOString(),
+                atualizadoEm: fim.toISOString()
+            });
+
+            falhaFirebaseAtualId = null;
             localStorage.setItem('alerta_emergencia_resolvido', Date.now());
 
-            sincronizarTravaRemota(false);
-            alert("Sistema destravado. As bancadas podem ser ligadas novamente.");
+            sincronizarTravaRemota(false, true);
+            alert(`Sistema destravado. A falha durou ${falhaDiff} segundos.`);
         }
 
-        function sincronizarTravaRemota(travar) {
+        // somenteLocal=true é usado quando Coordenador/Aluno apenas recebem o estado do Firebase.
+        function sincronizarTravaRemota(travar, somenteLocal = false) {
             systemLocked = travar;
 
-            // Mantém o estado global de emergência também no Firebase.
-            enviarEmergenciaFirebase(travar);
+            if (!somenteLocal) {
+                enviarEmergenciaFirebase(travar);
+            }
 
             if (travar) {
-                // Em uma emergência, as duas bancadas conectadas recebem Desligar.
-                desligarTodasBancadasFirebase();
-                emergencyStartTime = new Date();
+                if (!emergencyStartTime) emergencyStartTime = new Date();
+                if (!somenteLocal) desligarTodasBancadasFirebase();
+
                 Object.values(salas).forEach(s => {
                     if(s.masterValve) s.houveFalha = true;
-                    s.bancadas.forEach(b => { b.status = false; b.time = 0; }); 
+                    s.bancadas.forEach(b => { b.status = false; b.time = 0; });
                 });
 
                 document.getElementById('banner-emergencia').classList.remove('hidden');
-                document.getElementById('status-linha-ar').className = "flex items-center bg-red-50 border border-red-200 px-4 py-2 rounded-full space-x-2 text-red-700 font-medium text-sm";
-                document.getElementById('texto-status-ar').innerText = "Vazamento/Acidente Detectado!";
+                document.getElementById('status-linha-ar').className = 'flex items-center bg-red-50 border border-red-200 px-4 py-2 rounded-full space-x-2 text-red-700 font-medium text-sm';
+                document.getElementById('texto-status-ar').innerText = 'Vazamento/Acidente Detectado!';
             } else {
                 emergencyStartTime = null;
                 document.getElementById('banner-emergencia').classList.add('hidden');
-                document.getElementById('status-linha-ar').className = "flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm";
-                document.getElementById('texto-status-ar').innerText = "Tubulação Normal";
-                
+                document.getElementById('status-linha-ar').className = 'flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm';
+                document.getElementById('texto-status-ar').innerText = 'Tubulação Normal';
+
                 Object.values(salas).forEach(s => {
                     s.bancadas.forEach(b => {
                         const btn = document.getElementById(`btn-${b.id}`);
@@ -797,7 +1102,7 @@
                     });
                 });
             }
-            
+
             if(!document.getElementById('tela-dashboard').classList.contains('hidden')) updateDashboard();
         }
 
@@ -808,63 +1113,69 @@
                 document.getElementById('texto-tempo-falha').innerText = `Duração da falha: ${diff} segundos. Aguardando Professor resolver.`;
             }
 
-            for(const [id, sala] of Object.entries(salas)) {
-                sala.bancadas.forEach(b => {
-                    if (b.status && !systemLocked) {
-                        b.elapsedTime++;
-                    }
-
-                    if (b.status && b.time > 0) {
-                        b.time--;
-
-                        // Atualiza o Firebase a cada 5 segundos para não fazer uma requisição por segundo.
-                        if (b.time > 0 && b.time % 5 === 0) {
-                            atualizarTempoRestanteFirebase(b.id, b.time);
+            // O professor continua controlando a contagem local enquanto o ESP32 não entra no projeto.
+            if (currentUser && currentUser.role === 'professor') {
+                for(const [id, sala] of Object.entries(salas)) {
+                    sala.bancadas.forEach(b => {
+                        if (b.status && !systemLocked) {
+                            b.elapsedTime++;
                         }
 
-                        if (b.time <= 0) {
-                            b.status = false; 
-                            const btn = document.getElementById(`btn-${b.id}`);
-                            const card = document.getElementById(`card-${b.id}`);
-                            if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
-                            if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
+                        if (b.status && b.time > 0) {
+                            b.time--;
 
-                            // Tempo terminou: manda desligar para o Firebase.
-                            enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
+                            // Atualiza o Firebase a cada 5 segundos para reduzir requisições.
+                            if (b.time > 0 && b.time % 5 === 0) {
+                                atualizarTempoRestanteFirebase(b.id, b.time);
+                            }
+
+                            if (b.time <= 0) {
+                                b.status = false;
+                                const btn = document.getElementById(`btn-${b.id}`);
+                                const card = document.getElementById(`card-${b.id}`);
+                                if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
+                                if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
+                                enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
+                            }
                         }
-                    }
-                    
-                    if(document.getElementById(`time-${b.id}`)) {
-                        document.getElementById(`time-${b.id}`).innerText = b.time > 0 ? b.time + 's' : (b.status ? 'Ilimitado' : '--');
-                        document.getElementById(`bar-${b.id}`).innerText = (b.status && !systemLocked) ? '8.0 BAR' : '0.0 BAR';
-                    }
 
-                    if (chartInstances[`chart-${b.id}`]) {
-                        const chart = chartInstances[`chart-${b.id}`];
-                        const newData = (b.status && !systemLocked) ? (8.0 + (Math.random()*0.4 - 0.2)) : 0;
-                        chart.data.labels.shift();
-                        chart.data.labels.push(b.elapsedTime + 's');
-                        chart.data.datasets[0].data.shift();
-                        chart.data.datasets[0].data.push(newData);
-                        chart.update();
-                    }
-                });
+                        if(document.getElementById(`time-${b.id}`)) {
+                            document.getElementById(`time-${b.id}`).innerText = b.time > 0 ? b.time + 's' : (b.status ? 'Ilimitado' : '--');
+                            document.getElementById(`bar-${b.id}`).innerText = (b.status && !systemLocked) ? '8.0 BAR' : '0.0 BAR';
+                        }
+
+                        if (chartInstances[`chart-${b.id}`]) {
+                            const chart = chartInstances[`chart-${b.id}`];
+                            const newData = (b.status && !systemLocked) ? (8.0 + (Math.random()*0.4 - 0.2)) : 0;
+                            chart.data.labels.shift();
+                            chart.data.labels.push(b.elapsedTime + 's');
+                            chart.data.datasets[0].data.shift();
+                            chart.data.datasets[0].data.push(newData);
+                            chart.update();
+                        }
+                    });
+                }
             }
 
-            if (currentUser && currentUser.role === 'aluno') {
-                const targetBancada = salas.lab1.bancadas[0];
-                const isOn = targetBancada.status && !systemLocked;
-                document.getElementById('aluno-bar').innerText = isOn ? '8.1 BAR' : '0.0 BAR';
-                document.getElementById('aluno-timer').innerText = targetBancada.time > 0 ? `${targetBancada.time}s` : (isOn ? 'Ilimitado' : '--:--');
-                
-                if (chartInstances['chart-aluno']) {
-                     const c = chartInstances['chart-aluno'];
-                     c.data.labels.shift();
-                     c.data.labels.push(targetBancada.elapsedTime + 's');
-                     c.data.datasets[0].data.shift();
-                     c.data.datasets[0].data.push(isOn ? 8.1 : 0);
-                     c.update();
-                }
+            const agora = Date.now();
+
+            if (currentUser && currentUser.role === 'aluno' && agora - ultimoSyncAluno >= 2000) {
+                ultimoSyncAluno = agora;
+                atualizarAlunoFirebase();
+            }
+
+            if (currentUser && currentUser.role === 'coordenador' && agora - ultimoSyncCoordenador >= 2000) {
+                ultimoSyncCoordenador = agora;
+                atualizarCoordenadorFirebase();
+            }
+
+            if (
+                currentUser && currentUser.role === 'coordenador' &&
+                !document.getElementById('tela-relatorios').classList.contains('hidden') &&
+                agora - ultimoSyncRelatorios >= 5000
+            ) {
+                ultimoSyncRelatorios = agora;
+                renderRelatorios();
             }
         }
     </script>
