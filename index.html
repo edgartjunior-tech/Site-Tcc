@@ -144,7 +144,7 @@
                 </div>
 
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-6 text-sm text-blue-800">
-                    <strong>Versão 10:</strong> o Coordenador gerencia somente Professor → Sala. Cada professor escolhe o aluno de cada bancada dentro de <strong>Minha Sala</strong>.
+                    <strong>Versão 13:</strong> o Coordenador gerencia somente Professor → Sala. Cada professor escolhe o aluno de cada bancada dentro de <strong>Minha Sala</strong>.
                 </div>
             </div>
 
@@ -263,7 +263,7 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v12 - timer ESP32 + sincronizacao rapida carregado');
+        console.log('PneumaticSys Firebase v13 - streaming + confirmacao ESP32 carregado');
 
         // Bancadas lógicas do sistema. O ESP32 do protótipo pode usar apenas Bancada1/Bancada2;
         // Bancada3/Bancada4 permitem que a Sala 2 também funcione na simulação web.
@@ -328,31 +328,50 @@
 
         async function enviarEstadoBancadaFirebase(idBancada, comando, tempoSegundos = 0) {
             const nomeFirebase = MAPA_BANCADAS_FIREBASE[idBancada];
-            if (!nomeFirebase) return;
+            if (!nomeFirebase) return null;
 
             const ligada = comando === 'Ligar';
             const tempo = ligada ? Number(tempoSegundos || 0) : 0;
+            const seq = Date.now();
+            const agoraISO = new Date().toISOString();
 
-            // Bancada1 e Bancada2 são controladas fisicamente pelo ESP32.
-            // O site envia SOMENTE a intenção (comando + tempo configurado).
-            // estado e tempoRestante pertencem ao ESP32 e não são mais sobrescritos pelo navegador.
+            // Bancada1 e Bancada2 são bancadas físicas do protótipo.
+            // O site NÃO escreve estado nem tempoRestante.
+            // Ele publica somente a solicitação e aguarda o ESP32 confirmar.
             if (nomeFirebase === 'Bancada1' || nomeFirebase === 'Bancada2') {
-                await firebasePatch(nomeFirebase, {
+                const dadosControle = {
                     comando,
                     tempo,
-                    atualizadoEm: new Date().toISOString()
-                });
-                return;
+                    seq,
+                    enviadoEm: agoraISO
+                };
+
+                const [okCompat, okControle] = await Promise.all([
+                    // Mantido por compatibilidade com o código REST antigo.
+                    firebasePatch(nomeFirebase, {
+                        comando,
+                        tempo,
+                        solicitacaoSeq: seq,
+                        atualizadoEm: agoraISO
+                    }),
+
+                    // Canal rápido usado pelo novo ESP32 via streaming/SSE.
+                    firebasePatch(`ControleESP/${nomeFirebase}`, dadosControle)
+                ]);
+
+                return (okCompat && okControle) ? seq : null;
             }
 
-            // Bancadas 3/4 continuam disponíveis apenas para a simulação web da Sala 2.
+            // Bancadas 3/4 continuam apenas na simulação web.
             await firebasePatch(nomeFirebase, {
                 comando,
                 tempo,
                 tempoRestante: tempo,
                 estado: ligada ? 'Ligada' : 'Desligada',
-                atualizadoEm: new Date().toISOString()
+                atualizadoEm: agoraISO
             });
+
+            return seq;
         }
 
         async function atualizarTempoRestanteFirebase(idBancada, tempoRestante) {
@@ -366,10 +385,24 @@
         }
 
         async function enviarEmergenciaFirebase(ativa) {
-            await firebasePatch('Sistema', {
-                emergencia: Boolean(ativa),
-                atualizadoEm: new Date().toISOString()
-            });
+            const seq = Date.now();
+            const agoraISO = new Date().toISOString();
+
+            // Mantemos Sistema/emergencia porque o site, relatórios e coordenador usam esse caminho.
+            // O novo ESP32 escuta ControleESP/emergencia em streaming para reagir sem polling.
+            await Promise.all([
+                firebasePatch('Sistema', {
+                    emergencia: Boolean(ativa),
+                    atualizadoEm: agoraISO
+                }),
+                firebasePatch('ControleESP/emergencia', {
+                    ativa: Boolean(ativa),
+                    seq,
+                    enviadoEm: agoraISO
+                })
+            ]);
+
+            return seq;
         }
 
         function desligarTodasBancadasFirebase() {
@@ -382,6 +415,343 @@
             const data = new Date(valor);
             if (Number.isNaN(data.getTime())) return valor;
             return data.toLocaleString('pt-BR');
+        }
+
+        // =====================================================
+        // STREAMING EM TEMPO REAL (SITE)
+        // =====================================================
+        // O polling de 300 ms gerava várias requisições e ainda podia receber
+        // respostas antigas depois do clique. Agora o navegador mantém conexões
+        // EventSource abertas com o Firebase e recebe as mudanças imediatamente.
+
+        const cacheRealtime = {
+            Sistema: {},
+            Bancada1: {},
+            Bancada2: {},
+            Bancada3: {},
+            Bancada4: {}
+        };
+
+        const streamsRealtime = {};
+        let assinaturaStreamsProfessor = '';
+
+        // Comando pendente evita que uma resposta antiga faça o botão
+        // "ligar -> desligar -> ligar" visualmente enquanto o ESP32 confirma.
+        const comandosPendentes = {};
+
+        // Base visual do temporizador. O site pode interpolar a exibição
+        // entre duas atualizações do ESP32, mas NUNCA grava essa contagem.
+        const timersVisuais = {};
+
+        function fecharStreamsProfessor() {
+            Object.values(streamsRealtime).forEach(stream => {
+                try { stream.close(); } catch (e) {}
+            });
+
+            Object.keys(streamsRealtime).forEach(k => delete streamsRealtime[k]);
+            assinaturaStreamsProfessor = '';
+        }
+
+        function setValorPorCaminho(obj, caminho, valor, mesclar = false) {
+            const partes = String(caminho || '/')
+                .split('/')
+                .filter(Boolean);
+
+            if (partes.length === 0) {
+                if (mesclar && valor && typeof valor === 'object' && !Array.isArray(valor)) {
+                    return { ...(obj || {}), ...valor };
+                }
+                return valor && typeof valor === 'object' ? valor : {};
+            }
+
+            const raiz = (obj && typeof obj === 'object') ? obj : {};
+            let atual = raiz;
+
+            for (let i = 0; i < partes.length - 1; i++) {
+                const p = partes[i];
+                if (!atual[p] || typeof atual[p] !== 'object') atual[p] = {};
+                atual = atual[p];
+            }
+
+            const ultima = partes[partes.length - 1];
+
+            if (valor === null) {
+                delete atual[ultima];
+            } else if (
+                mesclar &&
+                valor &&
+                typeof valor === 'object' &&
+                !Array.isArray(valor) &&
+                atual[ultima] &&
+                typeof atual[ultima] === 'object'
+            ) {
+                atual[ultima] = { ...atual[ultima], ...valor };
+            } else {
+                atual[ultima] = valor;
+            }
+
+            return raiz;
+        }
+
+        function processarEventoRealtime(nomeCache, tipo, event) {
+            try {
+                const pacote = JSON.parse(event.data);
+                const caminho = pacote.path || '/';
+                const dados = pacote.data;
+
+                if (tipo === 'put') {
+                    cacheRealtime[nomeCache] =
+                        setValorPorCaminho(cacheRealtime[nomeCache], caminho, dados, false);
+                } else if (tipo === 'patch') {
+                    if (caminho === '/' && dados && typeof dados === 'object') {
+                        cacheRealtime[nomeCache] = {
+                            ...(cacheRealtime[nomeCache] || {}),
+                            ...dados
+                        };
+                    } else {
+                        cacheRealtime[nomeCache] =
+                            setValorPorCaminho(cacheRealtime[nomeCache], caminho, dados, true);
+                    }
+                }
+
+                renderEstadoProfessorDoCache();
+            } catch (erro) {
+                console.error(`[Realtime ${nomeCache}]`, erro);
+            }
+        }
+
+        function abrirStreamFirebase(nomeCache, caminhoFirebase) {
+            if (streamsRealtime[nomeCache]) {
+                try { streamsRealtime[nomeCache].close(); } catch (e) {}
+            }
+
+            const stream = new EventSource(firebaseURL(caminhoFirebase));
+
+            stream.addEventListener('put', event =>
+                processarEventoRealtime(nomeCache, 'put', event)
+            );
+
+            stream.addEventListener('patch', event =>
+                processarEventoRealtime(nomeCache, 'patch', event)
+            );
+
+            stream.addEventListener('cancel', event => {
+                console.error(`[Realtime ${nomeCache}] stream cancelado:`, event.data);
+            });
+
+            stream.onerror = () => {
+                // EventSource tenta reconectar automaticamente.
+                console.warn(`[Realtime ${nomeCache}] reconectando...`);
+            };
+
+            streamsRealtime[nomeCache] = stream;
+        }
+
+        async function iniciarStreamsProfessor() {
+            if (!currentUser || currentUser.role !== 'professor') return;
+
+            const salaEntry = getSalaDoProf();
+            if (!salaEntry) {
+                fecharStreamsProfessor();
+                return;
+            }
+
+            const [, sala] = salaEntry;
+            const chaves = sala.bancadas.map(b => MAPA_BANCADAS_FIREBASE[b.id]);
+            if (chaves.some(chave => !chave)) return;
+
+            const assinatura = ['Sistema', ...chaves].join('|');
+            if (assinaturaStreamsProfessor === assinatura) return;
+
+            fecharStreamsProfessor();
+            assinaturaStreamsProfessor = assinatura;
+
+            abrirStreamFirebase('Sistema', 'Sistema');
+            chaves.forEach(chave => abrirStreamFirebase(chave, chave));
+
+            // Carga inicial de segurança. Depois disso, o EventSource assume.
+            await atualizarProfessorBancadasFirebase();
+        }
+
+        function atualizarBaseTimerVisual(idBancada, remoto, ligado) {
+            const tempoRestante = Math.max(0, Number(remoto.tempoRestante || 0));
+            const tempoDefinido = Math.max(0, Number(remoto.tempo || 0));
+            const atual = timersVisuais[idBancada];
+
+            if (
+                !atual ||
+                atual.valorServidor !== tempoRestante ||
+                atual.ligado !== ligado ||
+                atual.tempoDefinido !== tempoDefinido
+            ) {
+                timersVisuais[idBancada] = {
+                    valorServidor: tempoRestante,
+                    recebidoEm: Date.now(),
+                    ligado,
+                    tempoDefinido
+                };
+            }
+        }
+
+        function tempoVisualBancada(idBancada) {
+            const base = timersVisuais[idBancada];
+            if (!base) return null;
+
+            if (!base.ligado) return 0;
+            if (base.tempoDefinido === 0) return null; // ilimitado
+
+            const passados = Math.floor((Date.now() - base.recebidoEm) / 1000);
+            return Math.max(0, base.valorServidor - passados);
+        }
+
+        function estilizarPendente(b, pendente) {
+            const btn = document.getElementById(`btn-${b.id}`);
+            const card = document.getElementById(`card-${b.id}`);
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = pendente.desejado ? 'Ligando...' : 'Desligando...';
+                btn.className =
+                    'px-4 py-1 rounded text-white text-sm font-bold bg-amber-500 opacity-90 cursor-wait';
+            }
+
+            if (card) {
+                card.className =
+                    'border rounded-xl p-5 bg-amber-50 border-amber-300';
+            }
+        }
+
+        function renderEstadoProfessorDoCache() {
+            if (!currentUser || currentUser.role !== 'professor') return;
+
+            const salaEntry = getSalaDoProf();
+            if (!salaEntry) return;
+
+            const [, sala] = salaEntry;
+            const sistema = cacheRealtime.Sistema || {};
+            const emergenciaRemota = Boolean(sistema.emergencia);
+
+            if (emergenciaRemota !== systemLocked) {
+                if (emergenciaRemota && sistema.falhaInicio) {
+                    emergencyStartTime = new Date(sistema.falhaInicio);
+                }
+                sincronizarTravaRemota(emergenciaRemota, true);
+            }
+
+            sala.bancadas.forEach(b => {
+                const chave = MAPA_BANCADAS_FIREBASE[b.id];
+                const remoto = cacheRealtime[chave] || {};
+
+                const estadoRemoto = remoto.estado || 'Desligada';
+                const comandoRemoto = remoto.comando || 'Desligar';
+                const ligadoReal =
+                    !emergenciaRemota &&
+                    estadoRemoto === 'Ligada' &&
+                    comandoRemoto === 'Ligar';
+
+                atualizarBaseTimerVisual(b.id, remoto, ligadoReal);
+
+                const pendente = comandosPendentes[b.id];
+
+                if (pendente) {
+                    const confirmou =
+                        pendente.desejado
+                            ? ligadoReal
+                            : (
+                                comandoRemoto === 'Desligar' &&
+                                estadoRemoto !== 'Ligada'
+                            );
+
+                    if (confirmou) {
+                        delete comandosPendentes[b.id];
+                    } else {
+                        // Enquanto o ESP32 ainda não confirmou, não deixa uma
+                        // resposta antiga sobrescrever o clique do professor.
+                        estilizarPendente(b, pendente);
+
+                        const timeEl = document.getElementById(`time-${b.id}`);
+                        if (timeEl) {
+                            const tv = tempoVisualBancada(b.id);
+                            timeEl.innerText =
+                                tv === null
+                                    ? (ligadoReal ? 'Ilimitado' : '--')
+                                    : (tv > 0 ? `${tv}s` : '--');
+                        }
+
+                        return;
+                    }
+                }
+
+                b.status = ligadoReal;
+                const tv = tempoVisualBancada(b.id);
+                b.time = tv === null ? 0 : Math.max(0, tv);
+
+                const btn = document.getElementById(`btn-${b.id}`);
+                const card = document.getElementById(`card-${b.id}`);
+                const timeEl = document.getElementById(`time-${b.id}`);
+                const barEl = document.getElementById(`bar-${b.id}`);
+
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = b.status ? 'Desligar' : 'Ligar Ar';
+                    btn.className = b.status
+                        ? 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500'
+                        : 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
+                }
+
+                if (card) {
+                    card.className = b.status
+                        ? 'border rounded-xl p-5 bg-blue-50 border-blue-200'
+                        : 'border rounded-xl p-5 bg-white';
+                }
+
+                if (timeEl) {
+                    const tempoDefinido = Number(remoto.tempo || 0);
+                    timeEl.innerText =
+                        tv === null
+                            ? (b.status && tempoDefinido === 0 ? 'Ilimitado' : '--')
+                            : (tv > 0 ? `${tv}s` : '--');
+                }
+
+                if (barEl) {
+                    barEl.innerText = b.status ? '8.0 BAR' : '0.0 BAR';
+                }
+            });
+        }
+
+        function atualizarTimersVisuaisProfessor() {
+            if (!currentUser || currentUser.role !== 'professor') return;
+
+            const salaEntry = getSalaDoProf();
+            if (!salaEntry) return;
+
+            const [, sala] = salaEntry;
+
+            sala.bancadas.forEach(b => {
+                const chave = MAPA_BANCADAS_FIREBASE[b.id];
+                const remoto = cacheRealtime[chave] || {};
+                const timeEl = document.getElementById(`time-${b.id}`);
+                if (!timeEl) return;
+
+                const pendente = comandosPendentes[b.id];
+                const tv = tempoVisualBancada(b.id);
+                const tempoDefinido = Number(remoto.tempo || 0);
+
+                if (tv === null) {
+                    timeEl.innerText =
+                        b.status && tempoDefinido === 0 ? 'Ilimitado' : '--';
+                } else {
+                    timeEl.innerText = tv > 0 ? `${tv}s` : '--';
+                }
+
+                // Se um comando ficou muito tempo sem confirmação,
+                // libera o botão para o professor tentar novamente.
+                if (pendente && Date.now() - pendente.criadoEm > 12000) {
+                    console.warn(`Sem confirmação do ESP32 para ${b.id}.`);
+                    delete comandosPendentes[b.id];
+                    renderEstadoProfessorDoCache();
+                }
+            });
         }
 
         // Sincroniza as designações de professores e o estado das salas com o Firebase.
@@ -491,9 +861,8 @@
         }
 
         // Professor NÃO conta mais o tempo localmente.
-        // O ESP32 é a fonte oficial de tempoRestante/estado e o site apenas exibe esses valores.
-        // Esta versão lê SOMENTE Sistema + as duas bancadas da sala, em paralelo.
-        // Assim evitamos baixar Relatorios, Falhas, Alunos e todo o restante do banco a cada atualização.
+        // Esta função ficou apenas como carga inicial/fallback.
+        // A atualização normal agora acontece por EventSource (streaming).
         async function atualizarProfessorBancadasFirebase() {
             if (!currentUser || currentUser.role !== 'professor') return;
             if (syncProfessorEmAndamento) return;
@@ -513,54 +882,12 @@
                     ...chaves.map(chave => firebaseGet(chave))
                 ]);
 
-                const sistema = leituras[0] || {};
-                const emergenciaRemota = Boolean(sistema.emergencia);
-
-                if (emergenciaRemota !== systemLocked) {
-                    if (emergenciaRemota && sistema.falhaInicio) {
-                        emergencyStartTime = new Date(sistema.falhaInicio);
-                    }
-                    sincronizarTravaRemota(emergenciaRemota, true);
-                }
-
-                sala.bancadas.forEach((b, index) => {
-                    const remoto = leituras[index + 1] || {};
-                    const estadoRemoto = remoto.estado || 'Desligada';
-                    const comandoRemoto = remoto.comando || 'Desligar';
-                    const tempoDefinido = Number(remoto.tempo || 0);
-                    const tempoRestante = Number(remoto.tempoRestante || 0);
-
-                    b.status = !emergenciaRemota && estadoRemoto === 'Ligada' && comandoRemoto === 'Ligar';
-                    b.time = Math.max(0, tempoRestante);
-
-                    const btn = document.getElementById(`btn-${b.id}`);
-                    const card = document.getElementById(`card-${b.id}`);
-                    const timeEl = document.getElementById(`time-${b.id}`);
-                    const barEl = document.getElementById(`bar-${b.id}`);
-
-                    if (btn) {
-                        btn.innerText = b.status ? 'Desligar' : 'Ligar Ar';
-                        btn.className = b.status
-                            ? 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500'
-                            : 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
-                    }
-
-                    if (card) {
-                        card.className = b.status
-                            ? 'border rounded-xl p-5 bg-blue-50 border-blue-200'
-                            : 'border rounded-xl p-5 bg-white';
-                    }
-
-                    if (timeEl) {
-                        timeEl.innerText = tempoRestante > 0
-                            ? `${tempoRestante}s`
-                            : (b.status && tempoDefinido === 0 ? 'Ilimitado' : '--');
-                    }
-
-                    if (barEl) {
-                        barEl.innerText = b.status ? '8.0 BAR' : '0.0 BAR';
-                    }
+                cacheRealtime.Sistema = leituras[0] || {};
+                chaves.forEach((chave, index) => {
+                    cacheRealtime[chave] = leituras[index + 1] || {};
                 });
+
+                renderEstadoProfessorDoCache();
             } finally {
                 syncProfessorEmAndamento = false;
             }
@@ -757,17 +1084,18 @@
             if (currentUser.role === 'aluno') atualizarAlunoFirebase();
             if (currentUser.role === 'coordenador') atualizarCoordenadorFirebase();
             if (currentUser.role === 'professor') {
-                atualizarProfessorBancadasFirebase();
+                // Streaming em tempo real. Não fica mais fazendo 3 GETs a cada 300 ms.
+                await iniciarStreamsProfessor();
 
+                // Fallback leve: a cada 10 s confirma o estado caso o navegador
+                // tenha passado por uma reconexão silenciosa.
                 if (intervals.professorFirebase) {
                     clearInterval(intervals.professorFirebase);
                 }
 
-                // Sincronização visual rápida. O bloqueio syncProfessorEmAndamento
-                // impede requisições sobrepostas se a internet estiver lenta.
                 intervals.professorFirebase = setInterval(
                     atualizarProfessorBancadasFirebase,
-                    300
+                    10000
                 );
             }
             
@@ -780,6 +1108,10 @@
                 clearInterval(intervals.professorFirebase);
                 delete intervals.professorFirebase;
             }
+
+            fecharStreamsProfessor();
+            Object.keys(comandosPendentes).forEach(k => delete comandosPendentes[k]);
+            Object.keys(timersVisuais).forEach(k => delete timersVisuais[k]);
 
             syncProfessorEmAndamento = false;
             currentUser = null;
@@ -828,7 +1160,10 @@
                 sincronizarSalasFirebase().then(() => renderAtribuicao());
             }
             if(tela === 'minha-sala') {
-                sincronizarSalasFirebase().then(() => renderMinhaSalaUI());
+                sincronizarSalasFirebase().then(async () => {
+                    renderMinhaSalaUI();
+                    await iniciarStreamsProfessor();
+                });
             }
             if(tela === 'relatorios') renderRelatorios();
             if(tela === 'aluno') {
@@ -1199,51 +1534,111 @@
             setTimeout(() => carregarSeletoresAlunos(idSala, sala), 100);
         }
 
-        function toggleBancada(idSala, idBancada) {
-            if(systemLocked) return;
+        async function toggleBancada(idSala, idBancada) {
+            if (systemLocked) return;
+
             const sala = salas[idSala];
             const b = sala.bancadas.find(x => x.id === idBancada);
+            if (!b) return;
+
+            const nomeFirebase = MAPA_BANCADAS_FIREBASE[idBancada];
+            const bancadaFisica =
+                nomeFirebase === 'Bancada1' ||
+                nomeFirebase === 'Bancada2';
+
+            // Bancadas físicas: nunca decide o estado pelo navegador.
+            // O clique vira uma solicitação e o botão aguarda a confirmação do ESP32.
+            if (bancadaFisica) {
+                if (comandosPendentes[idBancada]) return;
+
+                const desejaLigar = !b.status;
+                let tempoSegundos = 0;
+                let val = '';
+
+                if (desejaLigar) {
+                    val = document.getElementById(`input-time-${idBancada}`).value;
+                    tempoSegundos = val && Number(val) > 0 ? Number(val) * 60 : 0;
+                    sala.bancadasUsadas.add(idBancada);
+                    b.elapsedTime = 0;
+
+                    if (chartInstances[`chart-${idBancada}`]) {
+                        chartInstances[`chart-${idBancada}`].data.labels =
+                            ['0s', '0s', '0s', '0s', '0s'];
+                        chartInstances[`chart-${idBancada}`].data.datasets[0].data =
+                            [0, 0, 0, 0, 0];
+                        chartInstances[`chart-${idBancada}`].update();
+                    }
+
+                    enviarSinalWebhook('LIGAR_BANCADA', {
+                        sala: sala.nome,
+                        bancada: idBancada,
+                        tempoMinutos: val || 'Ilimitado'
+                    });
+                } else {
+                    enviarSinalWebhook('DESLIGAR_BANCADA', {
+                        sala: sala.nome,
+                        bancada: idBancada
+                    });
+                }
+
+                const pendente = {
+                    desejado: desejaLigar,
+                    criadoEm: Date.now(),
+                    seq: null
+                };
+
+                comandosPendentes[idBancada] = pendente;
+                estilizarPendente(b, pendente);
+
+                const seq = await enviarEstadoBancadaFirebase(
+                    idBancada,
+                    desejaLigar ? 'Ligar' : 'Desligar',
+                    tempoSegundos
+                );
+
+                if (!seq) {
+                    delete comandosPendentes[idBancada];
+                    alert('Não foi possível enviar o comando ao Firebase.');
+                    renderEstadoProfessorDoCache();
+                    return;
+                }
+
+                if (comandosPendentes[idBancada]) {
+                    comandosPendentes[idBancada].seq = seq;
+                }
+
+                return;
+            }
+
+            // Bancadas 3/4: simulação web.
             b.status = !b.status;
-            
+
             const btn = document.getElementById(`btn-${idBancada}`);
             const card = document.getElementById(`card-${idBancada}`);
-            
+
             if (b.status) {
                 const val = document.getElementById(`input-time-${idBancada}`).value;
                 b.time = val && val > 0 ? val * 60 : 0;
-                b.elapsedTime = 0; 
+                b.elapsedTime = 0;
                 sala.bancadasUsadas.add(idBancada);
-                
-                btn.innerText = 'Desligar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
-                card.className = 'border rounded-xl p-5 bg-blue-50 border-blue-200';
-                
-                if(chartInstances[`chart-${idBancada}`]){
-                    chartInstances[`chart-${idBancada}`].data.labels = ['0s', '0s', '0s', '0s', '0s'];
-                    chartInstances[`chart-${idBancada}`].data.datasets[0].data = [0,0,0,0,0];
-                    chartInstances[`chart-${idBancada}`].update();
-                }
 
-                enviarSinalWebhook('LIGAR_BANCADA', { 
-                    sala: sala.nome, 
-                    bancada: idBancada, 
-                    tempoMinutos: val || 'Ilimitado' 
-                });
+                btn.innerText = 'Desligar';
+                btn.className =
+                    'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
+                card.className =
+                    'border rounded-xl p-5 bg-blue-50 border-blue-200';
 
-                // Envia comando, tempo e estado para o Firebase.
-                enviarEstadoBancadaFirebase(idBancada, 'Ligar', b.time);
-
+                await enviarEstadoBancadaFirebase(idBancada, 'Ligar', b.time);
             } else {
                 b.time = 0;
-                btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
-                card.className = 'border rounded-xl p-5 bg-white';
 
-                enviarSinalWebhook('DESLIGAR_BANCADA', { 
-                    sala: sala.nome, 
-                    bancada: idBancada 
-                });
+                btn.innerText = 'Ligar Ar';
+                btn.className =
+                    'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
+                card.className =
+                    'border rounded-xl p-5 bg-white';
 
-                // Informa ao Firebase que a bancada foi desligada.
-                enviarEstadoBancadaFirebase(idBancada, 'Desligar', 0);
+                await enviarEstadoBancadaFirebase(idBancada, 'Desligar', 0);
             }
         }
 
@@ -1479,6 +1874,14 @@
                 atualizadoEm: inicio.toISOString()
             });
 
+            // Canal rápido para o ESP32: o stream recebe esta mudança
+            // praticamente no momento em que ela chega ao Firebase.
+            await firebasePatch('ControleESP/emergencia', {
+                ativa: true,
+                seq: Date.now(),
+                enviadoEm: inicio.toISOString()
+            });
+
             enviarSinalWebhook('EMERGENCIA_ACIONADA', {
                 professor: currentUser.nome,
                 status: 'SISTEMA_BLOQUEADO'
@@ -1532,6 +1935,12 @@
                 falhaInicio: '',
                 ultimaFalhaFim: fim.toISOString(),
                 atualizadoEm: fim.toISOString()
+            });
+
+            await firebasePatch('ControleESP/emergencia', {
+                ativa: false,
+                seq: Date.now(),
+                enviadoEm: fim.toISOString()
             });
 
             falhaFirebaseAtualId = null;
@@ -1620,6 +2029,7 @@
 
                     if (currentUser.role === 'professor' && !document.getElementById('tela-minha-sala').classList.contains('hidden')) {
                         renderMinhaSalaUI();
+                        iniciarStreamsProfessor();
                     }
 
                     if (currentUser.role === 'coordenador') {
@@ -1648,8 +2058,11 @@
                 renderRelatorios();
             }
 
-            // Estado e tempo das bancadas do professor são sincronizados por um
-            // intervalo dedicado de 300 ms criado no login do professor.
+            // O estado chega por streaming. A cada tick só interpolamos a
+            // exibição do cronômetro; nenhum valor é escrito pelo site.
+            if (currentUser && currentUser.role === 'professor') {
+                atualizarTimersVisuaisProfessor();
+            }
 
             if (currentUser && currentUser.role === 'professor' && Date.now() - ultimoSyncAlunosProfessor >= 2000) {
                 ultimoSyncAlunosProfessor = Date.now();
