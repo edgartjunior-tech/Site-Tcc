@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -263,7 +262,7 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v10 múltiplos alunos por bancada carregado');
+        console.log('PneumaticSys Firebase v11 - temporizador controlado pelo ESP32 carregado');
 
         // Bancadas lógicas do sistema. O ESP32 do protótipo pode usar apenas Bancada1/Bancada2;
         // Bancada3/Bancada4 permitem que a Sala 2 também funcione na simulação web.
@@ -477,6 +476,73 @@
             }
         }
 
+        // Professor NÃO conta mais o tempo localmente.
+        // O ESP32 é a fonte oficial de tempoRestante/estado e o site apenas exibe esses valores.
+        async function atualizarProfessorBancadasFirebase() {
+            if (!currentUser || currentUser.role !== 'professor') return;
+
+            const salaEntry = getSalaDoProf();
+            if (!salaEntry) return;
+
+            const [idSala, sala] = salaEntry;
+            const dados = await firebaseGet('');
+            if (!dados) return;
+
+            const sistema = dados.Sistema || {};
+            const emergenciaRemota = Boolean(sistema.emergencia);
+
+            // Mantém o bloqueio local coerente com o estado global do Firebase.
+            if (emergenciaRemota !== systemLocked) {
+                if (emergenciaRemota && sistema.falhaInicio) {
+                    emergencyStartTime = new Date(sistema.falhaInicio);
+                }
+                sincronizarTravaRemota(emergenciaRemota, true);
+            }
+
+            sala.bancadas.forEach((b) => {
+                const chaveFirebase = MAPA_BANCADAS_FIREBASE[b.id];
+                if (!chaveFirebase) return;
+
+                const remoto = dados[chaveFirebase] || {};
+                const estadoRemoto = remoto.estado || 'Desligada';
+                const comandoRemoto = remoto.comando || 'Desligar';
+                const tempoDefinido = Number(remoto.tempo || 0);
+                const tempoRestante = Number(remoto.tempoRestante || 0);
+
+                // A bancada só é considerada ativa quando o ESP32/Firebase dizem que está ligada.
+                b.status = !emergenciaRemota && estadoRemoto === 'Ligada' && comandoRemoto === 'Ligar';
+                b.time = Math.max(0, tempoRestante);
+
+                const btn = document.getElementById(`btn-${b.id}`);
+                const card = document.getElementById(`card-${b.id}`);
+                const timeEl = document.getElementById(`time-${b.id}`);
+                const barEl = document.getElementById(`bar-${b.id}`);
+
+                if (btn) {
+                    btn.innerText = b.status ? 'Desligar' : 'Ligar Ar';
+                    btn.className = b.status
+                        ? 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500'
+                        : 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
+                }
+
+                if (card) {
+                    card.className = b.status
+                        ? 'border rounded-xl p-5 bg-blue-50 border-blue-200'
+                        : 'border rounded-xl p-5 bg-white';
+                }
+
+                if (timeEl) {
+                    timeEl.innerText = tempoRestante > 0
+                        ? `${tempoRestante}s`
+                        : (b.status && tempoDefinido === 0 ? 'Ilimitado' : '--');
+                }
+
+                if (barEl) {
+                    barEl.innerText = b.status ? '8.0 BAR' : '0.0 BAR';
+                }
+            });
+        }
+
         // Coordenador lê o estado global do Firebase, inclusive em outro navegador.
         async function atualizarCoordenadorFirebase() {
             if (!currentUser || currentUser.role !== 'coordenador') return;
@@ -586,6 +652,7 @@
         let ultimoSyncRelatorios = 0;
         let ultimoSyncSalas = 0;
         let ultimoSyncAlunosProfessor = 0;
+        let ultimoSyncProfessorBancadas = 0;
         
         const relatorios = [];
         const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
@@ -666,6 +733,7 @@
 
             if (currentUser.role === 'aluno') atualizarAlunoFirebase();
             if (currentUser.role === 'coordenador') atualizarCoordenadorFirebase();
+            if (currentUser.role === 'professor') atualizarProfessorBancadasFirebase();
             
             document.getElementById('input-usuario').value = '';
             document.getElementById('input-senha').value = '';
@@ -1477,35 +1545,14 @@
                 document.getElementById('texto-tempo-falha').innerText = `Duração da falha: ${diff} segundos. Aguardando Professor resolver.`;
             }
 
-            // O professor continua controlando a contagem local enquanto o ESP32 não entra no projeto.
+            // O professor NÃO altera mais b.time.
+            // O ESP32 controla o temporizador e escreve tempoRestante no Firebase.
+            // Aqui mantemos apenas o tempo visual do gráfico e a simulação de pressão.
             if (currentUser && currentUser.role === 'professor') {
                 for(const [id, sala] of Object.entries(salas)) {
                     sala.bancadas.forEach(b => {
                         if (b.status && !systemLocked) {
                             b.elapsedTime++;
-                        }
-
-                        if (b.status && b.time > 0) {
-                            b.time--;
-
-                            // Atualiza o Firebase a cada 5 segundos para reduzir requisições.
-                            if (b.time > 0 && b.time % 5 === 0) {
-                                atualizarTempoRestanteFirebase(b.id, b.time);
-                            }
-
-                            if (b.time <= 0) {
-                                b.status = false;
-                                const btn = document.getElementById(`btn-${b.id}`);
-                                const card = document.getElementById(`card-${b.id}`);
-                                if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
-                                if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
-                                enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
-                            }
-                        }
-
-                        if(document.getElementById(`time-${b.id}`)) {
-                            document.getElementById(`time-${b.id}`).innerText = b.time > 0 ? b.time + 's' : (b.status ? 'Ilimitado' : '--');
-                            document.getElementById(`bar-${b.id}`).innerText = (b.status && !systemLocked) ? '8.0 BAR' : '0.0 BAR';
                         }
 
                         if (chartInstances[`chart-${b.id}`]) {
@@ -1557,6 +1604,13 @@
             ) {
                 ultimoSyncRelatorios = agora;
                 renderRelatorios();
+            }
+
+            // Atualiza estado e tempo das bancadas do professor a partir do ESP32/Firebase.
+            // Como globalTick roda a cada 1 segundo, a diferença visual normal fica em torno de 0-1 s.
+            if (currentUser && currentUser.role === 'professor' && agora - ultimoSyncProfessorBancadas >= 1000) {
+                ultimoSyncProfessorBancadas = agora;
+                atualizarProfessorBancadasFirebase();
             }
 
             if (currentUser && currentUser.role === 'professor' && Date.now() - ultimoSyncAlunosProfessor >= 2000) {
