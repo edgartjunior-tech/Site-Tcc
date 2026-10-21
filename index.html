@@ -1520,30 +1520,27 @@
                 status: 'Em andamento'
             };
 
-            falhaFirebaseAtualId = await firebasePost('Falhas', registroFalha);
-            sala.falhasSessao.push({
-                firebaseId: falhaFirebaseAtualId,
-                ...registroFalha
-            });
+            const falhaLocal = { firebaseId: null, ...registroFalha };
+            sala.falhasSessao.push(falhaLocal);
 
-            await firebasePatch('Sistema', {
+            // 1) Reação imediata: trava a tela e avisa o ESP32 sem esperar nenhuma outra gravação.
+            sincronizarTravaRemota(true, true);
+            dispararNotificacaoDesktop('🚨 FALHA CRÍTICA', 'Sistema de ar travado por emergência. Verifique a sala imediatamente!');
+            const patchSistema = firebasePatch('Sistema', {
                 emergencia: true,
-                falhaAtualId: falhaFirebaseAtualId || '',
                 falhaInicio: inicio.toISOString(),
                 atualizadoEm: inicio.toISOString()
             });
-
-            enviarSinalWebhook('EMERGENCIA_ACIONADA', {
-                professor: currentUser.nome,
-                status: 'SISTEMA_BLOQUEADO'
-            });
-
-            localStorage.setItem('alerta_emergencia_disparado', JSON.stringify({ prof: currentUser.nome, time: Date.now() }));
-
-            sincronizarTravaRemota(true, true);
             desligarTodasBancadasFirebase();
-            dispararNotificacaoDesktop('🚨 FALHA CRÍTICA', 'Sistema de ar travado por emergência. Verifique a sala imediatamente!');
+            localStorage.setItem('alerta_emergencia_disparado', JSON.stringify({ prof: currentUser.nome, time: Date.now() }));
+            enviarSinalWebhook('EMERGENCIA_ACIONADA', { professor: currentUser.nome, status: 'SISTEMA_BLOQUEADO' });
             navigate('minha-sala');
+
+            // 2) Depois, em segundo plano, registra a falha e guarda o ID dela.
+            const [, novoId] = await Promise.all([patchSistema, firebasePost('Falhas', registroFalha)]);
+            falhaFirebaseAtualId = novoId;
+            falhaLocal.firebaseId = novoId;
+            if (novoId) await firebasePatch('Sistema', { falhaAtualId: novoId });
         }
 
         async function resolverEmergencia() {
@@ -1688,9 +1685,10 @@
             const agora = Date.now();
 
             // Mantém o estado da sala sincronizado entre computadores.
-            if (currentUser && agora - ultimoSyncSalas >= 1000) {
+            if (currentUser && !window.__syncSalas && agora - ultimoSyncSalas >= 3000) {
                 ultimoSyncSalas = agora;
-                sincronizarSalasFirebase();
+                window.__syncSalas = true;
+                sincronizarSalasFirebase().finally(() => { window.__syncSalas = false; });
             }
 
             // Agenda: coordenador (calendário/dashboard) e professor (agenda de hoje).
@@ -1727,11 +1725,14 @@
                 renderRelatorios();
             }
 
-            if (currentUser && currentUser.role === 'professor' && Date.now() - ultimoSyncAlunosProfessor >= 2000) {
+            if (currentUser && currentUser.role === 'professor' && !window.__syncAlunos && Date.now() - ultimoSyncAlunosProfessor >= 3000) {
                 ultimoSyncAlunosProfessor = Date.now();
                 const salaEntry = getSalaDoProf();
                 if (salaEntry && !document.getElementById('tela-minha-sala').classList.contains('hidden')) {
-                    carregarSeletoresAlunos(salaEntry[0], salaEntry[1]);
+                    window.__syncAlunos = true;
+                    carregarSeletoresAlunos(salaEntry[0], salaEntry[1]).finally(() => { window.__syncAlunos = false; });
+                } else {
+                    window.__syncAlunos = false;
                 }
             }
 
