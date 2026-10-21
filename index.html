@@ -45,7 +45,7 @@
             </form>
 
             <div class="mt-6 text-xs text-slate-400 text-left bg-slate-50 p-3 rounded">
-                <div class="mb-2 font-bold text-blue-600">Versão 10 — sala única + calendário do coordenador</div>
+                <div class="mb-2 font-bold text-blue-600">Versão 11 — sala única + calendário + trava/destrava instantâneos</div>
                 <strong>Logins de teste (Senha: 123):</strong><br>
                 Coordenador: <em>coordenador</em><br>
                 Professor: <em>professor</em><br>
@@ -1569,27 +1569,31 @@
                 }
             }
 
-            if (falhaFirebaseAtualId) {
-                await firebasePatch(`Falhas/${falhaFirebaseAtualId}`, {
+            const idFalha = falhaFirebaseAtualId;
+            falhaFirebaseAtualId = null;
+
+            // 1) Reação imediata: destrava a tela e avisa o professor sem esperar o Firebase.
+            sincronizarTravaRemota(false, true);
+            localStorage.setItem('alerta_emergencia_resolvido', Date.now());
+
+            // 2) Envia tudo ao Firebase ao mesmo tempo (não uma gravação após a outra).
+            const gravacoes = Promise.all([
+                firebasePatch('Sistema', {
+                    emergencia: false,
+                    falhaAtualId: '',
+                    falhaInicio: '',
+                    ultimaFalhaFim: fim.toISOString(),
+                    atualizadoEm: fim.toISOString()
+                }),
+                idFalha ? firebasePatch(`Falhas/${idFalha}`, {
                     fim: fim.toISOString(),
                     duracaoSegundos: falhaDiff,
                     status: 'Resolvida'
-                });
-            }
+                }) : Promise.resolve(true)
+            ]);
 
-            await firebasePatch('Sistema', {
-                emergencia: false,
-                falhaAtualId: '',
-                falhaInicio: '',
-                ultimaFalhaFim: fim.toISOString(),
-                atualizadoEm: fim.toISOString()
-            });
-
-            falhaFirebaseAtualId = null;
-            localStorage.setItem('alerta_emergencia_resolvido', Date.now());
-
-            sincronizarTravaRemota(false, true);
             alert(`Sistema destravado. A falha durou ${falhaDiff} segundos.`);
+            await gravacoes;
         }
 
         // somenteLocal=true é usado quando Coordenador/Aluno apenas recebem o estado do Firebase.
