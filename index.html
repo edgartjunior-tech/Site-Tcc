@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -46,10 +45,10 @@
             </form>
 
             <div class="mt-6 text-xs text-slate-400 text-left bg-slate-50 p-3 rounded">
-                <div class="mb-2 font-bold text-blue-600">Versão 10 — múltiplos alunos por bancada</div>
+                <div class="mb-2 font-bold text-blue-600">Versão 10 — sala única + calendário do coordenador</div>
                 <strong>Logins de teste (Senha: 123):</strong><br>
                 Coordenador: <em>coordenador</em><br>
-                Professores: <em>souza</em>, <em>silva</em>, <em>mendes</em><br>
+                Professor: <em>professor</em><br>
                 Alunos: <em>aluno1</em>, <em>aluno2</em> (Senha: 123)
             </div>
         </div>
@@ -136,15 +135,32 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="grid-salas-dashboard"></div>
             </div>
 
-            <!-- TELA: ATRIBUIÇÃO DE SALAS (COORDENADOR) -->
-            <div id="tela-atribuicao" class="tela-conteudo p-8 pt-4 hidden">
+            <!-- TELA: CALENDÁRIO (COORDENADOR) -->
+            <div id="tela-calendario" class="tela-conteudo p-8 pt-4 hidden">
                 <div class="bg-white rounded-xl border border-slate-100 p-6">
-                    <h3 class="text-xl font-bold mb-6">Designar Professores às Salas</h3>
-                    <div class="space-y-4" id="lista-atribuicao"></div>
+                    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                        <h3 class="text-xl font-bold"><i class="fa-solid fa-calendar-days text-blue-600 mr-2"></i>Calendário de uso da sala</h3>
+                        <div class="flex items-center gap-2">
+                            <button onclick="mudarMes(-1)" class="w-9 h-9 rounded-lg border hover:bg-slate-50"><i class="fa-solid fa-chevron-left"></i></button>
+                            <div id="cal-titulo" class="w-48 text-center font-bold"></div>
+                            <button onclick="mudarMes(1)" class="w-9 h-9 rounded-lg border hover:bg-slate-50"><i class="fa-solid fa-chevron-right"></i></button>
+                            <button onclick="irParaHoje()" class="px-3 h-9 rounded-lg border text-sm hover:bg-slate-50">Hoje</button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-4 text-xs text-slate-600 mb-4">
+                        <span><span class="inline-block w-3 h-3 rounded bg-white border border-slate-300 mr-1"></span>Aguardando confirmação</span>
+                        <span><span class="inline-block w-3 h-3 rounded bg-green-100 border border-green-300 mr-1"></span>Confirmado</span>
+                        <span><span class="inline-block w-3 h-3 rounded bg-slate-200 border border-slate-300 mr-1"></span>Feriado</span>
+                        <span class="text-slate-400">Clique em um dia para agendar professor, sala e horário.</span>
+                    </div>
+                    <div class="grid grid-cols-7 gap-2 text-xs font-semibold text-slate-500 uppercase text-center mb-2">
+                        <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+                    </div>
+                    <div id="cal-grid" class="grid grid-cols-7 gap-2"></div>
                 </div>
 
-                <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-6 text-sm text-blue-800">
-                    <strong>Versão 10:</strong> o Coordenador gerencia somente Professor → Sala. Cada professor escolhe o aluno de cada bancada dentro de <strong>Minha Sala</strong>.
+                <div id="modal-dia" onclick="if(event.target===this) fecharDia()" class="hidden fixed inset-0 bg-slate-900/50 z-40 flex items-center justify-center p-4">
+                    <div id="modal-dia-conteudo" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6"></div>
                 </div>
             </div>
 
@@ -157,16 +173,18 @@
                     <div class="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-100 mb-6">
                         <div>
                             <h2 class="text-2xl font-bold text-slate-800" id="titulo-sala-prof">Laboratório X</h2>
-                            <p class="text-slate-500">Controle Mestre e Bancadas</p>
+                            <p class="text-slate-500">Direcionamento de Ar para as Bancadas</p>
                         </div>
                         <div class="flex space-x-4 items-center">
-                            <button id="btn-master-valve" onclick="toggleMasterValve()" class="px-6 py-3 rounded-lg font-bold text-white bg-slate-400 transition-colors">
-                                <i class="fa-solid fa-power-off mr-2"></i><span id="texto-master-valve">Liberar Ar para a Sala</span>
-                            </button>
                             <button onclick="encerrarAtividade()" class="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">
                                 Encerrar & Gerar Relatório
                             </button>
                         </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-xl border border-slate-100 mb-6">
+                        <h3 class="font-bold text-slate-800 mb-2"><i class="fa-solid fa-calendar-day text-blue-600 mr-2"></i>Agenda de hoje</h3>
+                        <div id="agenda-hoje-prof" class="space-y-1"></div>
                     </div>
 
                     <div id="painel-aluno-professor" class="bg-blue-50 p-5 rounded-xl border border-blue-100 mb-6">
@@ -175,11 +193,11 @@
                         <div id="status-aluno-professor" class="text-sm font-medium mt-2 text-slate-600">As atribuições são salvas no Firebase e valem também em outros computadores.</div>
                     </div>
                     
-                    <div id="aviso-master-off" class="text-center p-8 bg-slate-50 text-slate-500 rounded-lg border border-dashed border-slate-300 mb-6">
-                        A válvula principal da sala está fechada. Libere o ar acima para controlar as bancadas.
+                    <div class="text-center p-4 bg-green-50 text-green-700 rounded-lg border border-green-200 mb-6">
+                        O ar comprimido já está disponível na válvula. Escolha abaixo qual bancada receberá o ar.
                     </div>
 
-                    <div id="grid-bancadas-prof" class="grid grid-cols-1 lg:grid-cols-2 gap-6 hidden"></div>
+                    <div id="grid-bancadas-prof" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
                 </div>
             </div>
 
@@ -269,9 +287,7 @@
         // Bancada3/Bancada4 permitem que a Sala 2 também funcione na simulação web.
         const MAPA_BANCADAS_FIREBASE = {
             'L1B1': 'Bancada1',
-            'L1B2': 'Bancada2',
-            'L2B1': 'Bancada3',
-            'L2B2': 'Bancada4'
+            'L1B2': 'Bancada2'
         };
 
         function firebaseURL(caminho = '') {
@@ -378,36 +394,17 @@
             const dadosSalas = await firebaseGet('Salas');
             if (!dadosSalas) return false;
 
-            let atribuicaoMudou = false;
-
             for (const [idSala, salaLocal] of Object.entries(salas)) {
                 const salaRemota = dadosSalas[idSala];
                 if (!salaRemota) continue;
-
-                const novoProfessor = salaRemota.professor || 'Nenhum';
-                const novoProfessorId = salaRemota.professorId || professorIdPorNome(novoProfessor);
-
-                if (salaLocal.professorDesignado !== novoProfessor || salaLocal.professorIdDesignado !== novoProfessorId) {
-                    salaLocal.professorDesignado = novoProfessor;
-                    salaLocal.professorIdDesignado = novoProfessorId;
-                    atribuicaoMudou = true;
-                }
-
-                if (typeof salaRemota.ativa === 'boolean') {
-                    salaLocal.masterValve = salaRemota.ativa;
-                }
-
-                if (salaRemota.nome) {
-                    salaLocal.nome = salaRemota.nome;
-                }
-
+                if (typeof salaRemota.ativa === 'boolean') salaLocal.masterValve = salaRemota.ativa;
+                if (salaRemota.nome) salaLocal.nome = salaRemota.nome;
                 if (salaRemota.inicioAula) {
                     const inicio = new Date(salaRemota.inicioAula);
                     if (!Number.isNaN(inicio.getTime())) salaLocal.sessionStartTime = inicio;
                 }
             }
-
-            return atribuicaoMudou;
+            return false;
         }
 
         // Valida a atribuição do aluno. A sala/bancada permitida vem do Firebase,
@@ -487,29 +484,16 @@
             const sistema = dados.Sistema || {};
             const b1 = dados.Bancada1 || {};
             const b2 = dados.Bancada2 || {};
-            const b3 = dados.Bancada3 || {};
-            const b4 = dados.Bancada4 || {};
             const sala1 = (dados.Salas && dados.Salas.lab1) || {};
-            const sala2 = (dados.Salas && dados.Salas.lab2) || {};
 
             salas.lab1.masterValve = Boolean(sala1.ativa);
-            salas.lab2.masterValve = Boolean(sala2.ativa);
-            if (sala1.professor) salas.lab1.professorDesignado = sala1.professor;
-            if (sala2.professor) salas.lab2.professorDesignado = sala2.professor;
-            if (typeof sala1.professorId === 'string') salas.lab1.professorIdDesignado = sala1.professorId;
-            if (typeof sala2.professorId === 'string') salas.lab2.professorIdDesignado = sala2.professorId;
             if (sala1.nome) salas.lab1.nome = sala1.nome;
-            if (sala2.nome) salas.lab2.nome = sala2.nome;
 
             salas.lab1.bancadas[0].status = b1.estado === 'Ligada';
             salas.lab1.bancadas[0].time = Number(b1.tempoRestante || 0);
             salas.lab1.bancadas[1].status = b2.estado === 'Ligada';
             salas.lab1.bancadas[1].time = Number(b2.tempoRestante || 0);
-            salas.lab2.bancadas[0].status = b3.estado === 'Ligada';
-            salas.lab2.bancadas[0].time = Number(b3.tempoRestante || 0);
-            salas.lab2.bancadas[1].status = b4.estado === 'Ligada';
-            salas.lab2.bancadas[1].time = Number(b4.tempoRestante || 0);
-
+            
             const emergenciaRemota = Boolean(sistema.emergencia);
             if (emergenciaRemota && sistema.falhaInicio) {
                 emergencyStartTime = new Date(sistema.falhaInicio);
@@ -568,9 +552,7 @@
         // --- SISTEMA DE USUÁRIOS E ESTADO GLOBAL ---
         const usuariosDB = [
             { id: 'coordenador', pass: '123', role: 'coordenador', nome: 'Coordenador', avatar: 'C' },
-            { id: 'souza', pass: '123', role: 'professor', nome: 'Prof. Souza', avatar: 'P' },
-            { id: 'silva', pass: '123', role: 'professor', nome: 'Prof. Silva', avatar: 'P' },
-            { id: 'mendes', pass: '123', role: 'professor', nome: 'Prof. Mendes', avatar: 'P' },
+            { id: 'professor', pass: '123', role: 'professor', nome: 'Professor', avatar: 'P' },
             { id: 'aluno1', pass: '123', role: 'aluno', nome: 'Aluno 1', avatar: 'A' },
             { id: 'aluno2', pass: '123', role: 'aluno', nome: 'Aluno 2', avatar: 'A' }
         ];
@@ -588,29 +570,11 @@
         let ultimoSyncAlunosProfessor = 0;
         
         const relatorios = [];
-        const professoresList = ['Nenhum', 'Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
-
-        const PROFESSOR_ID_POR_NOME = {
-            'Prof. Souza': 'souza',
-            'Prof. Silva': 'silva',
-            'Prof. Mendes': 'mendes',
-            'Nenhum': ''
-        };
-
-        function professorIdPorNome(nome) {
-            return PROFESSOR_ID_POR_NOME[nome] || '';
-        }
-
         const salas = {
             lab1: { 
-                nome: 'Laboratório 1', professorDesignado: 'Prof. Souza', professorIdDesignado: 'souza',
+                nome: 'Laboratório 1', professorSessao: null,
                 masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(), falhasSessao: [],
                 bancadas: [{id: 'L1B1', status: false, time: 0, elapsedTime: 0}, {id: 'L1B2', status: false, time: 0, elapsedTime: 0}] 
-            },
-            lab2: { 
-                nome: 'Laboratório 2', professorDesignado: 'Nenhum', professorIdDesignado: '', 
-                masterValve: false, sessionStartTime: null, houveFalha: false, tempoFalha: 0, bancadasUsadas: new Set(), falhasSessao: [],
-                bancadas: [{id: 'L2B1', status: false, time: 0, elapsedTime: 0}, {id: 'L2B2', status: false, time: 0, elapsedTime: 0}] 
             }
         };
 
@@ -687,7 +651,7 @@
                 menu.innerHTML += `<a href="#" onclick="navigate('dashboard')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-chart-line w-6"></i>Dashboard</a>`;
             }
             if (currentUser.role === 'coordenador') {
-                menu.innerHTML += `<a href="#" onclick="navigate('atribuicao')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-calendar-check w-6"></i>Atribuir Salas</a>`;
+                menu.innerHTML += `<a href="#" onclick="navigate('calendario')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-calendar-days w-6"></i>Calendário</a>`;
                 menu.innerHTML += `<a href="#" onclick="navigate('relatorios')" class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-lg"><i class="fa-solid fa-file-contract w-6"></i>Relatórios</a>`;
             }
             if (currentUser.role === 'professor') {
@@ -712,15 +676,16 @@
             document.getElementById(`tela-${tela}`).classList.remove('hidden');
             
             if(tela === 'dashboard') {
-                sincronizarSalasFirebase().then(() => updateDashboard());
+                Promise.all([sincronizarSalasFirebase(), carregarAgendaFirebase()]).then(() => updateDashboard());
             }
-            if(tela === 'atribuicao') {
-                sincronizarSalasFirebase().then(() => renderAtribuicao());
+            if(tela === 'calendario') {
+                renderCalendario();
+                carregarAgendaFirebase().then(() => renderCalendario());
             }
             if(tela === 'minha-sala') {
-                sincronizarSalasFirebase().then(() => renderMinhaSalaUI());
+                Promise.all([sincronizarSalasFirebase(), carregarAgendaFirebase()]).then(() => renderMinhaSalaUI());
             }
-            if(tela === 'relatorios') renderRelatorios();
+                        if(tela === 'relatorios') renderRelatorios();
             if(tela === 'aluno') {
                 initChart('chart-aluno');
                 setTimeout(atualizarAlunoFirebase, 100);
@@ -737,14 +702,14 @@
                 let bancadasOn = 0;
                 sala.bancadas.forEach(b => { if(b.status) { bancadasOn++; fluxoTotal += 15; } });
                 
-                const cardColor = sala.masterValve ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white';
-                const statusTxt = sala.masterValve ? `Ar na sala ON (${bancadasOn} bancadas)` : 'Sala Desativada';
+                const cardColor = bancadasOn > 0 ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white';
+                const statusTxt = `${bancadasOn} bancada(s) recebendo ar`;
                 
                 grid.innerHTML += `
                     <div class="rounded-xl border p-6 ${cardColor}">
                         <h3 class="font-bold text-slate-800 mb-2">${sala.nome}</h3>
-                        <p class="text-sm text-slate-600 mb-1"><i class="fa-solid fa-user mr-2"></i>${sala.professorDesignado}</p>
-                        <p class="text-sm font-medium ${sala.masterValve ? 'text-blue-700' : 'text-slate-400'}">${statusTxt}</p>
+                        <p class="text-sm text-slate-600 mb-1"><i class="fa-solid fa-user mr-2"></i>${esc(professorAgendadoAgora(id) || 'Sem professor agendado')}</p>
+                        <p class="text-sm font-medium ${bancadasOn > 0 ? 'text-blue-700' : 'text-slate-400'}">${statusTxt}</p>
                     </div>
                 `;
             }
@@ -762,22 +727,6 @@
             }
         }
 
-        function renderAtribuicao() {
-            const lista = document.getElementById('lista-atribuicao');
-            lista.innerHTML = '';
-            for (const [id, sala] of Object.entries(salas)) {
-                let options = professoresList.map(p => `<option value="${p}" ${sala.professorDesignado === p ? 'selected' : ''}>${p}</option>`).join('');
-                lista.innerHTML += `
-                    <div class="flex items-center justify-between p-4 bg-slate-50 border rounded-lg">
-                        <div class="font-bold">${sala.nome}</div>
-                        <select onchange="updateDesignacao('${id}', this.value)" class="p-2 border rounded bg-white focus:outline-blue-500">
-                            ${options}
-                        </select>
-                    </div>
-                `;
-            }
-        }
-        
         const ALUNOS_DISPONIVEIS = [
             { id: 'aluno1', nome: 'Aluno 1' },
             { id: 'aluno2', nome: 'Aluno 2' }
@@ -927,50 +876,287 @@
             await carregarSeletoresAlunos(idSala, sala);
         }
 
-        async function updateDesignacao(salaId, profName) {
-            const professorAnterior = salas[salaId].professorDesignado;
-            const professorIdAnterior = salas[salaId].professorIdDesignado || '';
-            const novoProfessorId = professorIdPorNome(profName);
+        // --- AGENDA / CALENDÁRIO (COORDENADOR) ---
+        // Firebase: Agenda/<id> = { data, horaInicio, horaFim, salaId, sala, professor, confirmado }
+        //           Feriados/<id> = { data, nome }  (feriados extras criados pelo coordenador)
+        const SUGESTOES_PROFESSORES = ['Prof. Souza', 'Prof. Silva', 'Prof. Mendes'];
+        const NOMES_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        let agenda = {};
+        let feriadosExtras = {};
+        let calAno, calMes, calDiaSel = null;
+        let ultimoSyncAgenda = 0;
+        const cacheNacionais = {};
 
-            // Atualiza a tela imediatamente, mas só confirma depois que o Firebase aceitar.
-            salas[salaId].professorDesignado = profName;
-            salas[salaId].professorIdDesignado = novoProfessorId;
+        function esc(t) {
+            return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function pad(n) { return String(n).padStart(2, '0'); }
+        function chaveData(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 
-            if(profName !== 'Nenhum') {
-                salas[salaId].masterValve = false;
-                salas[salaId].bancadas.forEach(b => b.status = false);
+        async function firebaseDelete(caminho) {
+            try {
+                const r = await fetch(firebaseURL(caminho), { method: 'DELETE' });
+                if (!r.ok) throw new Error(`Firebase respondeu HTTP ${r.status}`);
+                return true;
+            } catch (e) { console.error('[Firebase] Erro ao apagar:', e); return false; }
+        }
+
+        // Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher) — base para Carnaval, Sexta Santa e Corpus Christi.
+        function pascoa(ano) {
+            const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4;
+            const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+            const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+            const m = Math.floor((a + 11 * h + 22 * l) / 451);
+            const mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1;
+            return new Date(ano, mes - 1, dia);
+        }
+
+        function feriadosNacionais(ano) {
+            if (cacheNacionais[ano]) return cacheNacionais[ano];
+            const mapa = {};
+            const fixo = (m, d, nome) => { mapa[chaveData(new Date(ano, m - 1, d))] = nome; };
+            fixo(1, 1, 'Confraternização Universal'); fixo(4, 21, 'Tiradentes'); fixo(5, 1, 'Dia do Trabalho');
+            fixo(9, 7, 'Independência do Brasil'); fixo(10, 12, 'N. Sra. Aparecida'); fixo(11, 2, 'Finados');
+            fixo(11, 15, 'Proclamação da República'); fixo(11, 20, 'Consciência Negra'); fixo(12, 25, 'Natal');
+            const p = pascoa(ano);
+            const desl = n => chaveData(new Date(p.getFullYear(), p.getMonth(), p.getDate() + n));
+            mapa[desl(-48)] = 'Carnaval'; mapa[desl(-47)] = 'Carnaval';
+            mapa[desl(-2)] = 'Sexta-feira Santa'; mapa[desl(60)] = 'Corpus Christi';
+            return (cacheNacionais[ano] = mapa);
+        }
+
+        function feriadoDoDia(chave) {
+            const nome = feriadosNacionais(Number(chave.slice(0, 4)))[chave];
+            if (nome) return { nome, extraId: null };
+            const extra = Object.entries(feriadosExtras).find(([, f]) => f && f.data === chave);
+            return extra ? { nome: extra[1].nome || 'Feriado', extraId: extra[0] } : null;
+        }
+
+        async function carregarAgendaFirebase() {
+            const [ag, fe] = await Promise.all([firebaseGet('Agenda'), firebaseGet('Feriados')]);
+            agenda = (ag && typeof ag === 'object') ? ag : {};
+            feriadosExtras = (fe && typeof fe === 'object') ? fe : {};
+        }
+
+        function entradasDoDia(chave) {
+            return Object.entries(agenda)
+                .filter(([, e]) => e && e.data === chave)
+                .map(([id, e]) => ({ id, ...e }))
+                .sort((a, b) => String(a.horaInicio).localeCompare(String(b.horaInicio)));
+        }
+
+        // Professor previsto para a sala agora (ou o do dia, se não houver horário em andamento).
+        function professorAgendadoAgora(idSala) {
+            const ents = entradasDoDia(chaveData(new Date())).filter(e => !idSala || e.salaId === idSala);
+            if (!ents.length) return null;
+            const n = new Date(), hora = `${pad(n.getHours())}:${pad(n.getMinutes())}`;
+            const atual = ents.find(e => hora >= e.horaInicio && hora <= e.horaFim);
+            return (atual || ents.find(e => e.confirmado) || ents[0]).professor;
+        }
+
+        function professorDaAula(idSala) {
+            const s = salas[idSala];
+            return (s && s.professorSessao) || professorAgendadoAgora(idSala) || (currentUser ? currentUser.nome : 'Professor');
+        }
+
+        function renderAgendaHojeProf() {
+            const el = document.getElementById('agenda-hoje-prof');
+            if (!el) return;
+            const ents = entradasDoDia(chaveData(new Date()));
+            el.innerHTML = ents.length ? ents.map(e => `
+                <div class="flex items-center gap-2 text-sm ${e.confirmado ? 'text-green-700' : 'text-slate-600'}">
+                    <i class="fa-solid ${e.confirmado ? 'fa-circle-check' : 'fa-clock'}"></i>
+                    <strong>${esc(e.horaInicio)}–${esc(e.horaFim)}</strong> ${esc(e.professor)} • ${esc(e.sala)}
+                    <span class="text-xs">${e.confirmado ? '(confirmado)' : '(aguardando confirmação)'}</span>
+                </div>`).join('') : '<span class="text-sm text-slate-400">Nenhum agendamento para hoje.</span>';
+        }
+
+        function renderCalendario() {
+            const hoje = new Date(), hojeKey = chaveData(hoje);
+            if (calAno === undefined) { calAno = hoje.getFullYear(); calMes = hoje.getMonth(); }
+            document.getElementById('cal-titulo').innerText = `${NOMES_MESES[calMes]} de ${calAno}`;
+
+            const primeiro = new Date(calAno, calMes, 1).getDay();
+            const dias = new Date(calAno, calMes + 1, 0).getDate();
+            let html = '<div></div>'.repeat(primeiro);
+
+            for (let d = 1; d <= dias; d++) {
+                const chave = `${calAno}-${pad(calMes + 1)}-${pad(d)}`;
+                const fer = feriadoDoDia(chave);
+                const ents = entradasDoDia(chave);
+                const todasOk = ents.length > 0 && ents.every(e => e.confirmado === true);
+
+                let cor = 'bg-white border-slate-200 hover:border-blue-400';
+                if (todasOk) cor = 'bg-green-100 border-green-300 hover:border-green-500';
+                if (fer) cor = 'bg-slate-200 border-slate-300 text-slate-500 hover:border-slate-400';
+                const anel = chave === hojeKey ? 'ring-2 ring-blue-500' : '';
+
+                const chips = ents.slice(0, 3).map(e => `
+                    <div class="text-[11px] leading-tight rounded px-1 py-0.5 mt-1 truncate ${e.confirmado ? 'bg-green-200 text-green-900' : 'bg-blue-50 text-blue-800'}">
+                        ${e.confirmado ? '<i class="fa-solid fa-circle-check"></i> ' : ''}${esc(e.horaInicio)}–${esc(e.horaFim)} ${esc(e.professor)}
+                    </div>`).join('');
+                const mais = ents.length > 3 ? `<div class="text-[11px] text-slate-500 mt-1">+${ents.length - 3} mais</div>` : '';
+
+                html += `
+                    <div onclick="abrirDia('${chave}')" class="min-h-[96px] p-2 border rounded-lg cursor-pointer transition ${cor} ${anel}">
+                        <div class="text-sm font-bold">${d}</div>
+                        ${fer ? `<div class="text-[11px] leading-tight font-medium mt-0.5">${esc(fer.nome)}</div>` : ''}
+                        ${chips}${mais}
+                    </div>`;
             }
+            document.getElementById('cal-grid').innerHTML = html;
+        }
 
-            const salvo = await firebasePatch(`Salas/${salaId}`, {
-                nome: salas[salaId].nome,
-                professor: profName,
-                professorId: novoProfessorId,
-                ativa: false,
-                atualizadoEm: new Date().toISOString()
-            });
+        function mudarMes(delta) {
+            calMes += delta;
+            if (calMes < 0) { calMes = 11; calAno--; }
+            if (calMes > 11) { calMes = 0; calAno++; }
+            renderCalendario();
+        }
+        function irParaHoje() { const h = new Date(); calAno = h.getFullYear(); calMes = h.getMonth(); renderCalendario(); }
 
-            if (!salvo) {
-                salas[salaId].professorDesignado = professorAnterior;
-                salas[salaId].professorIdDesignado = professorIdAnterior;
-                alert('Não foi possível salvar a atribuição no Firebase. Verifique a conexão.');
-                renderAtribuicao();
+        function abrirDia(chave) {
+            calDiaSel = chave;
+            renderModalDia();
+            document.getElementById('modal-dia').classList.remove('hidden');
+        }
+        function fecharDia() {
+            calDiaSel = null;
+            document.getElementById('modal-dia').classList.add('hidden');
+        }
+
+        function renderModalDia() {
+            const chave = calDiaSel;
+            if (!chave) return;
+            const [a, m, d] = chave.split('-').map(Number);
+            const titulo = new Date(a, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+            const fer = feriadoDoDia(chave);
+            const ents = entradasDoDia(chave);
+
+            const avisoFeriado = fer ? `
+                <div class="flex items-center justify-between gap-3 bg-slate-200 text-slate-700 rounded-lg p-3 text-sm mb-4">
+                    <span><i class="fa-solid fa-flag mr-2"></i><strong>Feriado:</strong> ${esc(fer.nome)}</span>
+                    ${fer.extraId ? `<button onclick="removerFeriadoExtra('${fer.extraId}')" class="text-xs underline">Remover</button>` : ''}
+                </div>` : `
+                <button onclick="marcarFeriadoExtra()" class="text-xs text-slate-500 underline mb-4"><i class="fa-solid fa-flag mr-1"></i>Marcar este dia como feriado/recesso</button>`;
+
+            const lista = ents.length ? ents.map(e => `
+                <div class="flex items-center justify-between gap-3 p-3 rounded-lg border ${e.confirmado ? 'bg-green-100 border-green-300' : 'bg-slate-50 border-slate-200'}">
+                    <div class="min-w-0">
+                        <div class="font-bold text-sm">${esc(e.horaInicio)} – ${esc(e.horaFim)}</div>
+                        <div class="text-sm truncate">${esc(e.professor)}</div>
+                        <div class="text-xs text-slate-500">${esc(e.sala)} • ${e.confirmado ? 'Confirmado' : 'Aguardando confirmação'}</div>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <button onclick="alternarConfirmacao('${e.id}')" title="Confirmar horário e sala" class="w-9 h-9 rounded-full border ${e.confirmado ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-slate-300 text-slate-400 hover:text-green-600 hover:border-green-600'}"><i class="fa-solid fa-check"></i></button>
+                        <button onclick="removerAgendamento('${e.id}')" title="Excluir" class="w-9 h-9 rounded-full border border-slate-300 bg-white text-slate-400 hover:text-red-600 hover:border-red-500"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>`).join('') : '<div class="text-sm text-slate-400">Nenhum agendamento neste dia.</div>';
+
+            const optSalas = Object.entries(salas).map(([id, s]) => `<option value="${id}">${esc(s.nome)}</option>`).join('');
+            const optProf = SUGESTOES_PROFESSORES.map(p => `<option value="${esc(p)}">`).join('');
+
+            document.getElementById('modal-dia-conteudo').innerHTML = `
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-lg font-bold capitalize">${esc(titulo)}</h3>
+                    <button onclick="fecharDia()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                ${avisoFeriado}
+                <div class="space-y-2 mb-6">${lista}</div>
+                <div class="border-t pt-4">
+                    <div class="font-bold text-sm mb-3">Novo agendamento</div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Professor</label>
+                            <input id="ag-prof" list="lista-professores" placeholder="Nome do professor" class="w-full p-2 border rounded-lg">
+                            <datalist id="lista-professores">${optProf}</datalist>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Sala</label>
+                            <select id="ag-sala" class="w-full p-2 border rounded-lg bg-white">${optSalas}</select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Início</label>
+                            <input id="ag-ini" type="time" class="w-full p-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Término</label>
+                            <input id="ag-fim" type="time" class="w-full p-2 border rounded-lg">
+                        </div>
+                    </div>
+                    <button onclick="adicionarAgendamento()" class="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold">Agendar</button>
+                </div>`;
+        }
+
+        async function recarregarCalendario() {
+            await carregarAgendaFirebase();
+            renderCalendario();
+            renderModalDia();
+        }
+
+        async function adicionarAgendamento() {
+            const chave = calDiaSel;
+            const prof = document.getElementById('ag-prof').value.trim();
+            const salaId = document.getElementById('ag-sala').value;
+            const ini = document.getElementById('ag-ini').value;
+            const fim = document.getElementById('ag-fim').value;
+
+            if (!prof || !ini || !fim) { alert('Preencha o professor e os horários de início e término.'); return; }
+            if (fim <= ini) { alert('O horário de término deve ser depois do início.'); return; }
+
+            const conflito = entradasDoDia(chave).find(e => e.salaId === salaId && ini < e.horaFim && fim > e.horaInicio);
+            if (conflito) {
+                alert(`Conflito: ${salas[salaId].nome} já está reservada por ${conflito.professor} das ${conflito.horaInicio} às ${conflito.horaFim}.`);
                 return;
             }
 
-            // Lê novamente do Firebase para confirmar que outro computador verá a mesma informação.
-            await sincronizarSalasFirebase();
-            renderAtribuicao();
-            updateDashboard();
-            console.log(`[Salas] ${salaId} confirmado no Firebase para ${profName} (${novoProfessorId || 'nenhum'})`);
+            const fer = feriadoDoDia(chave);
+            if (fer && !confirm(`Este dia é feriado (${fer.nome}). Agendar mesmo assim?`)) return;
+
+            const id = await firebasePost('Agenda', {
+                data: chave, horaInicio: ini, horaFim: fim,
+                salaId, sala: salas[salaId].nome, professor: prof,
+                confirmado: false, criadoEm: new Date().toISOString()
+            });
+            if (!id) { alert('Não foi possível salvar o agendamento no Firebase.'); return; }
+            await recarregarCalendario();
         }
 
+        async function alternarConfirmacao(id) {
+            const e = agenda[id];
+            if (!e) return;
+            const novo = !(e.confirmado === true);
+            const ok = await firebasePatch(`Agenda/${id}`, {
+                confirmado: novo,
+                confirmadoEm: novo ? new Date().toISOString() : ''
+            });
+            if (!ok) { alert('Não foi possível atualizar a confirmação no Firebase.'); return; }
+            await recarregarCalendario();
+        }
+
+        async function removerAgendamento(id) {
+            if (!confirm('Excluir este agendamento?')) return;
+            if (!(await firebaseDelete(`Agenda/${id}`))) { alert('Não foi possível excluir no Firebase.'); return; }
+            await recarregarCalendario();
+        }
+
+        async function marcarFeriadoExtra() {
+            const nome = prompt('Nome do feriado/recesso (ex.: Aniversário da cidade):');
+            if (!nome || !nome.trim()) return;
+            const id = await firebasePost('Feriados', { data: calDiaSel, nome: nome.trim() });
+            if (!id) { alert('Não foi possível salvar o feriado no Firebase.'); return; }
+            await recarregarCalendario();
+        }
+
+        async function removerFeriadoExtra(id) {
+            if (!(await firebaseDelete(`Feriados/${id}`))) { alert('Não foi possível remover o feriado.'); return; }
+            await recarregarCalendario();
+        }
 
         // --- PROFESSOR: MINHA SALA ---
         function getSalaDoProf() {
-            if(currentUser.role !== 'professor') return null;
-            return Object.entries(salas).find(([id, s]) =>
-                s.professorIdDesignado === currentUser.id || s.professorDesignado === currentUser.nome
-            );
+            if(!currentUser || currentUser.role !== 'professor') return null;
+            return Object.entries(salas)[0] || null;
         }
 
         function renderMinhaSalaUI() {
@@ -987,64 +1173,41 @@
             const [idSala, sala] = salaEntry;
             document.getElementById('titulo-sala-prof').innerText = sala.nome;
             
-            const btnMaster = document.getElementById('btn-master-valve');
-            if (sala.masterValve) {
-                btnMaster.className = 'px-6 py-3 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors';
-                document.getElementById('texto-master-valve').innerText = 'Ar da Sala Liberado';
-                document.getElementById('aviso-master-off').classList.add('hidden');
-                document.getElementById('grid-bancadas-prof').classList.remove('hidden');
-                
-                if(document.getElementById('grid-bancadas-prof').innerHTML === '') {
-                    buildBancadasHTML(idSala, sala);
-                }
-                carregarSeletoresAlunos(idSala, sala);
-            } else {
-                btnMaster.className = 'px-6 py-3 rounded-lg font-bold text-white bg-slate-400 hover:bg-slate-500 transition-colors';
-                document.getElementById('texto-master-valve').innerText = 'Liberar Ar para a Sala';
-                document.getElementById('aviso-master-off').classList.remove('hidden');
-                document.getElementById('grid-bancadas-prof').classList.add('hidden');
-                document.getElementById('grid-bancadas-prof').innerHTML = ''; 
-            }
-        }
+            // Sala única: o ar já chega à válvula principal.
+            // O professor controla somente qual bancada recebe o ar.
+            sala.masterValve = true;
+            document.getElementById('grid-bancadas-prof').classList.remove('hidden');
 
-        function toggleMasterValve() {
-            if(systemLocked) return alert("Sistema travado devido a emergência!");
-            const salaEntry = getSalaDoProf();
-            if(!salaEntry) return;
-            const [idSala, sala] = salaEntry;
-            
-            sala.masterValve = !sala.masterValve;
-            
-            if(sala.masterValve) {
+            if (document.getElementById('grid-bancadas-prof').innerHTML === '') {
+                buildBancadasHTML(idSala, sala);
+            }
+            carregarSeletoresAlunos(idSala, sala);
+
+            renderAgendaHojeProf();
+
+            // A aula começa quando o professor acessa sua sala pela primeira vez.
+            if (!sala.sessionStartTime) {
                 sala.sessionStartTime = new Date();
+                sala.professorSessao = professorAgendadoAgora(idSala) || currentUser.nome;
                 sala.houveFalha = false;
                 sala.tempoFalha = 0;
                 sala.bancadasUsadas.clear();
                 sala.falhasSessao = [];
-
                 firebasePatch(`Salas/${idSala}`, {
                     nome: sala.nome,
-                    professor: sala.professorDesignado,
-                    professorId: sala.professorIdDesignado || professorIdPorNome(sala.professorDesignado),
+                    professor: sala.professorSessao,
+                    professorId: currentUser.id,
                     ativa: true,
                     inicioAula: sala.sessionStartTime.toISOString(),
                     fimAula: '',
                     atualizadoEm: new Date().toISOString()
                 });
-            } else {
-                sala.bancadas.forEach(b => {
-                    b.status = false;
-                    b.time = 0;
-                    b.elapsedTime = 0;
-                    enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
-                });
-
-                firebasePatch(`Salas/${idSala}`, {
-                    ativa: false,
-                    atualizadoEm: new Date().toISOString()
-                });
             }
-            renderMinhaSalaUI();
+        }
+
+        // Mantida apenas por compatibilidade. Nesta versão não existe liberação de ar da sala.
+        function toggleMasterValve() {
+            return;
         }
 
         function buildBancadasHTML(idSala, sala) {
@@ -1061,7 +1224,7 @@
                                 <div class="flex space-x-2">
                                     <input type="number" id="input-time-${b.id}" placeholder="Minutos" class="w-20 p-1 border rounded text-sm">
                                     <button id="btn-${b.id}" onclick="toggleBancada('${idSala}', '${b.id}')" class="px-4 py-1 rounded text-white text-sm font-bold ${isOn ? 'bg-red-500' : 'bg-blue-600'}">
-                                        ${isOn ? 'Desligar' : 'Ligar Ar'}
+                                        ${isOn ? 'Parar Ar' : 'Direcionar Ar'}
                                     </button>
                                 </div>
                             </div>
@@ -1104,7 +1267,7 @@
                 b.elapsedTime = 0; 
                 sala.bancadasUsadas.add(idBancada);
                 
-                btn.innerText = 'Desligar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
+                btn.innerText = 'Parar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
                 card.className = 'border rounded-xl p-5 bg-blue-50 border-blue-200';
                 
                 if(chartInstances[`chart-${idBancada}`]){
@@ -1124,7 +1287,7 @@
 
             } else {
                 b.time = 0;
-                btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
+                btn.innerText = 'Direcionar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
                 card.className = 'border rounded-xl p-5 bg-white';
 
                 enviarSinalWebhook('DESLIGAR_BANCADA', { 
@@ -1155,7 +1318,7 @@
             const [idSala, sala] = entry;
 
             if (!sala.sessionStartTime) {
-                alert('A aula ainda não foi iniciada. Libere o ar da sala primeiro.');
+                alert('A aula ainda não foi iniciada. Entre na tela da sala para iniciar a atividade.');
                 return;
             }
 
@@ -1172,7 +1335,7 @@
             const relatorioFirebase = {
                 criadoEm: fimAula.toISOString(),
                 data: fimAula.toLocaleString('pt-BR'),
-                professor: sala.professorDesignado,
+                professor: professorDaAula(idSala),
                 salaId: idSala,
                 sala: sala.nome,
                 inicioAula: sala.sessionStartTime.toISOString(),
@@ -1217,6 +1380,7 @@
             }
 
             sala.sessionStartTime = null;
+            sala.professorSessao = null;
 
             if (idRelatorio) {
                 alert('Atividade encerrada. O relatório foi salvo no Firebase e já pode ser visto pelo Coordenador.');
@@ -1349,7 +1513,7 @@
             const registroFalha = {
                 salaId: idSala,
                 sala: sala.nome,
-                professor: currentUser.nome,
+                professor: professorDaAula(idSala),
                 inicio: inicio.toISOString(),
                 fim: '',
                 duracaoSegundos: 0,
@@ -1461,7 +1625,7 @@
                     s.bancadas.forEach(b => {
                         const btn = document.getElementById(`btn-${b.id}`);
                         const card = document.getElementById(`card-${b.id}`);
-                        if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
+                        if(btn) { btn.innerText = 'Direcionar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
                         if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
                     });
                 });
@@ -1497,7 +1661,7 @@
                                 b.status = false;
                                 const btn = document.getElementById(`btn-${b.id}`);
                                 const card = document.getElementById(`card-${b.id}`);
-                                if(btn) { btn.innerText = 'Ligar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
+                                if(btn) { btn.innerText = 'Direcionar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
                                 if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
                                 enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
                             }
@@ -1523,19 +1687,23 @@
 
             const agora = Date.now();
 
-            // Mantém a atribuição de salas sincronizada entre computadores.
+            // Mantém o estado da sala sincronizado entre computadores.
             if (currentUser && agora - ultimoSyncSalas >= 1000) {
                 ultimoSyncSalas = agora;
-                sincronizarSalasFirebase().then((atribuicaoMudou) => {
-                    if (!atribuicaoMudou || !currentUser) return;
+                sincronizarSalasFirebase();
+            }
 
-                    if (currentUser.role === 'professor' && !document.getElementById('tela-minha-sala').classList.contains('hidden')) {
-                        renderMinhaSalaUI();
-                    }
-
+            // Agenda: coordenador (calendário/dashboard) e professor (agenda de hoje).
+            if (currentUser && (currentUser.role === 'coordenador' || currentUser.role === 'professor') && agora - ultimoSyncAgenda >= 10000) {
+                ultimoSyncAgenda = agora;
+                carregarAgendaFirebase().then(() => {
+                    if (!currentUser) return;
+                    const visivel = id => !document.getElementById(id).classList.contains('hidden');
                     if (currentUser.role === 'coordenador') {
-                        if (!document.getElementById('tela-atribuicao').classList.contains('hidden')) renderAtribuicao();
-                        if (!document.getElementById('tela-dashboard').classList.contains('hidden')) updateDashboard();
+                        if (visivel('tela-calendario') && !visivel('modal-dia')) renderCalendario();
+                        if (visivel('tela-dashboard')) updateDashboard();
+                    } else if (visivel('tela-minha-sala')) {
+                        renderAgendaHojeProf();
                     }
                 });
             }
