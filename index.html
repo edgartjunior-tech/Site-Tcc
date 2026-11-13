@@ -3,11 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PneumaticSys - Gestão Completa</title>
+    <title>PneumaticSys — Controle Pneumático</title>
     
     <!-- Adicione APENAS esta linha abaixo: -->
     <link rel="icon" type="image/png" href="logo.jpg-removebg-preview.png">
     
+    <!-- Firebase Auth: configurações PUBLICAS da app web; nunca service-account -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -35,10 +39,10 @@
             
             <form id="form-login" onsubmit="realizarLogin(event)" class="space-y-4">
                 <div>
-                    <input type="text" id="input-usuario" placeholder="Usuário" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+                    <input type="email" id="input-usuario" inputmode="email" placeholder="E-mail" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
                 </div>
                 <div>
-                    <input type="password" id="input-senha" placeholder="Senha (padrão: 123)" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+                    <input type="password" id="input-senha" placeholder="Senha" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
                 </div>
                 
                 <div id="msg-erro-login" class="hidden text-red-500 text-sm font-medium">Usuário ou senha incorretos!</div>
@@ -49,11 +53,8 @@
             </form>
 
             <div class="mt-6 text-xs text-slate-400 text-left bg-slate-50 p-3 rounded">
-                <div class="mb-2 font-bold text-blue-600">Versão 11 — sala única + calendário + trava/destrava instantâneos</div>
-                <strong>Logins de teste (Senha: 123):</strong><br>
-                Coordenador: <em>coordenador</em><br>
-                Professor: <em>professor</em><br>
-                Alunos: <em>aluno1</em>, <em>aluno2</em> (Senha: 123)
+                <div class="mb-2 font-bold text-blue-600">PneumaticSys — versão operacional USB</div>
+                Entre com sua conta individual do Firebase Authentication. Não compartilhe senhas.
             </div>
         </div>
     </div>
@@ -102,12 +103,12 @@
                 <div class="flex items-center space-x-3">
                     <i class="fa-solid fa-skull-crossbones text-2xl animate-pulse"></i>
                     <div>
-                        <h3 class="font-bold text-lg">SISTEMA BLOQUEADO - FALHA CRÍTICA</h3>
+                        <h3 class="font-bold text-lg">SISTEMA BLOQUEADO — PARADA DE EMERGÊNCIA</h3>
                         <p class="text-sm" id="texto-tempo-falha">Tempo em falha: Calculando...</p>
                     </div>
                 </div>
                 <button id="btn-resolver-falha" onclick="resolverEmergencia()" class="hidden bg-white text-red-700 px-4 py-2 rounded font-bold hover:bg-slate-100">
-                    FALHA RESOLVIDA (DESTRAVAR)
+                    PROBLEMA RESOLVIDO (LIBERAR BLOQUEIO)
                 </button>
             </div>
 
@@ -115,7 +116,7 @@
                 <h1 id="titulo-pagina" class="text-2xl font-bold text-slate-800">Dashboard</h1>
                 <div id="status-linha-ar" class="flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm">
                     <i class="fa-solid fa-pipe-valve" id="icone-status-ar"></i>
-                    <span id="texto-status-ar">Tubulação Normal</span>
+                    <span id="texto-status-ar">Aguardando leitura real</span>
                 </div>
             </header>
 
@@ -124,15 +125,15 @@
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <div class="bg-white rounded-xl border border-slate-100 p-6 flex items-center space-x-4">
                         <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i class="fa-solid fa-wave-square text-xl"></i></div>
-                        <div><div class="text-sm text-slate-500">Pressão Linha Principal</div><div class="text-2xl font-bold" id="dash-pressao">8.5 <span class="text-sm font-normal">BAR</span></div></div>
+                        <div><div class="text-sm text-slate-500">Pressão real da linha</div><div class="text-2xl font-bold" id="dash-pressao">-- <span class="text-sm font-normal">bar</span></div></div>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-100 p-6 flex items-center space-x-4">
                         <div class="w-12 h-12 rounded-full bg-cyan-50 flex items-center justify-center text-cyan-500"><i class="fa-solid fa-wind text-xl"></i></div>
-                        <div><div class="text-sm text-slate-500">Fluxo Total Estimado</div><div class="text-2xl font-bold" id="dash-fluxo">120 <span class="text-sm font-normal">L/min</span></div></div>
+                        <div><div class="text-sm text-slate-500">Vazão (sem sensor)</div><div class="text-2xl font-bold" id="dash-fluxo">Não medida</div></div>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-100 p-6 flex items-center space-x-4">
                         <div class="w-12 h-12 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600"><i class="fa-solid fa-magnifying-glass-chart text-xl"></i></div>
-                        <div><div class="text-sm text-slate-500">Status de Vazamento</div><div class="text-xl font-bold text-green-600" id="dash-vazamento">Nenhum Detectado</div></div>
+                        <div><div class="text-sm text-slate-500">Detecção de vazamento</div><div class="text-xl font-bold text-green-600" id="dash-vazamento">Não monitorado</div></div>
                     </div>
                 </div>
                 <h2 class="text-lg font-bold mb-4"><i class="fa-solid fa-building text-blue-600 mr-2"></i>Salas e Laboratórios</h2>
@@ -198,7 +199,7 @@
                     </div>
                     
                     <div class="text-center p-4 bg-green-50 text-green-700 rounded-lg border border-green-200 mb-6">
-                        O ar comprimido já está disponível na válvula. Escolha abaixo qual bancada receberá o ar.
+                        Pressão medida na linha (sensor único). O botão solicita o acionamento da válvula; não há confirmação por sensor de posição do pistão.
                     </div>
 
                     <div id="grid-bancadas-prof" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
@@ -236,7 +237,7 @@
                             <p class="text-xl font-bold text-slate-700" id="aluno-estado">Desligada</p>
                         </div>
                         <div class="p-4 bg-slate-50 rounded-lg min-w-40">
-                            <p class="text-slate-500 text-sm">Pressão Atual</p>
+                            <p class="text-slate-500 text-sm">Pressão da linha</p>
                             <p class="text-2xl font-bold text-blue-600" id="aluno-bar">0.0 BAR</p>
                         </div>
                         <div class="p-4 bg-slate-50 rounded-lg min-w-40">
@@ -285,106 +286,193 @@
         // - Falhas: histórico com início, fim e duração (criado automaticamente quando houver falha)
         // - Relatorios: relatórios encerrados pelo professor (criado automaticamente quando houver relatório)
         const FIREBASE_URL = 'https://tcc-pnematica-default-rtdb.firebaseio.com';
-        console.log('PneumaticSys Firebase v10 múltiplos alunos por bancada carregado');
+        console.log('PneumaticSys v13 — Firebase Authentication, ponte USB e controle local');
 
-        // Bancadas lógicas do sistema. O ESP32 do protótipo pode usar apenas Bancada1/Bancada2;
-        // Bancada3/Bancada4 permitem que a Sala 2 também funcione na simulação web.
+        // Uma unica sala, duas bancadas fisicas; estados confirmados pelo ESP32.
         const MAPA_BANCADAS_FIREBASE = {
             'L1B1': 'Bancada1',
             'L1B2': 'Bancada2'
         };
 
-        function firebaseURL(caminho = '') {
-            const limpo = String(caminho || '').replace(/^\/+|\/+$/g, '');
-            return limpo ? `${FIREBASE_URL}/${limpo}.json` : `${FIREBASE_URL}/.json`;
+        const FIREBASE_CONFIG = window.PNEUMATICSYS_FIREBASE_CONFIG;
+        let AUTH = null;
+        try {
+            if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey ||
+                FIREBASE_CONFIG.apiKey === 'COLE_AQUI_SUA_API_KEY') {
+                throw new Error('firebase-config.js nao configurado');
+            }
+            firebase.initializeApp(FIREBASE_CONFIG);
+            AUTH = firebase.auth();
+        } catch (e) {
+            console.error('[CONFIGURACAO] Firebase Authentication:', e);
+            document.getElementById('msg-erro-login').innerText = 'Configuração do Firebase Authentication pendente.';
+            document.getElementById('msg-erro-login').classList.remove('hidden');
         }
 
+        function firebaseURL(caminho = '') {
+            const limpo = String(caminho || '').replace(/^\/+|\/+$/g, '');
+            return `${FIREBASE_URL}/${limpo}.json`;
+        }
+        async function firebaseUrlComToken(caminho) {
+            if (!AUTH || !AUTH.currentUser) throw new Error('Sessao nao autenticada');
+            const token = await AUTH.currentUser.getIdToken();
+            return `${firebaseURL(caminho)}?auth=${encodeURIComponent(token)}`;
+        }
         async function firebaseGet(caminho = '') {
             try {
-                const resposta = await fetch(`${firebaseURL(caminho)}?ts=${Date.now()}`, { cache: 'no-store' });
-                if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
+                const url = await firebaseUrlComToken(caminho);
+                const resposta = await fetch(url, {cache:'no-store'});
+                if (!resposta.ok) throw new Error(`Firebase GET ${caminho}: ${resposta.status}`);
                 return await resposta.json();
             } catch (erro) {
                 console.error('[Firebase] Erro de leitura:', erro);
                 return null;
             }
         }
-
         async function firebasePatch(caminho, dados) {
             try {
-                const resposta = await fetch(firebaseURL(caminho), {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dados)
-                });
-
-                if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
-                console.log(`[Firebase PATCH] ${caminho}`, dados);
+                const url = await firebaseUrlComToken(caminho);
+                const resposta = await fetch(url, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(dados)});
+                if (!resposta.ok) throw new Error(`Firebase PATCH ${caminho}: ${resposta.status}`);
                 return true;
             } catch (erro) {
-                console.error('[Firebase] Falha de comunicação:', erro);
+                console.error('[Firebase] Erro de escrita:', erro);
                 return false;
             }
         }
-
-        // POST cria uma chave única automaticamente no Realtime Database.
         async function firebasePost(caminho, dados) {
             try {
-                const resposta = await fetch(firebaseURL(caminho), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dados)
-                });
-
-                if (!resposta.ok) throw new Error(`Firebase respondeu HTTP ${resposta.status}`);
-                const retorno = await resposta.json();
-                console.log(`[Firebase POST] ${caminho}`, retorno.name, dados);
-                return retorno.name || null;
+                const url = await firebaseUrlComToken(caminho);
+                const resposta = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(dados)});
+                if (!resposta.ok) throw new Error(`Firebase POST ${caminho}: ${resposta.status}`);
+                const json = await resposta.json();
+                return json.name || null;
             } catch (erro) {
-                console.error('[Firebase] Erro ao criar registro:', erro);
+                console.error('[Firebase] Erro de criação:', erro);
                 return null;
             }
         }
 
-        async function enviarEstadoBancadaFirebase(idBancada, comando, tempoSegundos = 0) {
-            const nomeFirebase = MAPA_BANCADAS_FIREBASE[idBancada];
-            if (!nomeFirebase) return;
 
-            const ligada = comando === 'Ligar';
-            const tempo = ligada ? Number(tempoSegundos || 0) : 0;
-
-            await firebasePatch(nomeFirebase, {
-                comando,
-                tempo,
-                tempoRestante: tempo,
-                estado: ligada ? 'Ligada' : 'Desligada',
-                atualizadoEm: new Date().toISOString()
-            });
+                // v12: COMANDOS ficam em ControleESP. Bancada1/2 sao ESTADOS confirmados pelo ESP32.
+        // seq distingue um novo comando do historico anterior; nao altera temporizador no site.
+        let ultimaSeqGerada = 0;
+        function novoSeq() {
+            const candidato = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+            ultimaSeqGerada = Math.max(ultimaSeqGerada + 1, candidato);
+            return ultimaSeqGerada;
         }
 
-        async function atualizarTempoRestanteFirebase(idBancada, tempoRestante) {
-            const nomeFirebase = MAPA_BANCADAS_FIREBASE[idBancada];
-            if (!nomeFirebase) return;
-
-            await firebasePatch(nomeFirebase, {
-                tempoRestante: Math.max(0, Number(tempoRestante || 0)),
-                atualizadoEm: new Date().toISOString()
-            });
+        async function enviarEstadoBancadaFirebase(idBancada, comando, tempoSegundos = 0) {
+            const chave = MAPA_BANCADAS_FIREBASE[idBancada];
+            if (!chave) return false;
+            const tempo = comando === 'Ligar' ? Math.trunc(Number(tempoSegundos)) : 0;
+            if (comando === 'Ligar' && (systemLocked || !conexaoESPonline)) return false;
+            if (!Number.isFinite(tempo) || tempo < 0 || tempo > 28800) return false;
+            const seq = novoSeq();
+            const ok = await firebasePatch(`ControleESP/${chave}`, {comando, tempo, seq});
+            return ok ? seq : false;
         }
 
         async function enviarEmergenciaFirebase(ativa) {
-            await firebasePatch('Sistema', {
-                emergencia: Boolean(ativa),
-                atualizadoEm: new Date().toISOString()
-            });
+            // O comando vai exclusivamente para ControleESP. Somente a ponte Admin
+            // pode confirmar o estado no Sistema (telemetria ESP32).
+            return firebasePatch('ControleESP/emergencia', {ativa: Boolean(ativa), seq: novoSeq()});
         }
 
-        function desligarTodasBancadasFirebase() {
-            enviarEstadoBancadaFirebase('L1B1', 'Desligar', 0);
-            enviarEstadoBancadaFirebase('L1B2', 'Desligar', 0);
+
+                async function desligarTodasBancadasFirebase() {
+            return Promise.all([
+                enviarEstadoBancadaFirebase('L1B1', 'Desligar'),
+                enviarEstadoBancadaFirebase('L1B2', 'Desligar')
+            ]);
         }
 
-        function formatarDataHoraISO(valor) {
+        // Espera a confirmação REAL do controlador (ackSeq) antes de encerrar
+        // uma aula. Retorno HTTP do Firebase sozinho NAO prova desligamento.
+        async function aguardarParadaConfirmada(sequencias, limiteMs = 6500) {
+            const inicio = Date.now();
+            while (Date.now() - inicio < limiteMs) {
+                const [b1, b2, sistema] = await Promise.all([
+                    firebaseGet('Bancada1'), firebaseGet('Bancada2'), firebaseGet('Sistema')
+                ]);
+                if (b1 && b2 && sistema &&
+                    sistema.statusESP32 === 'Online' &&
+                    Date.now() - Number(sistema.ultimoContato || 0) < 7000 &&
+                    Number(b1.ackSeq || 0) >= sequencias[0] &&
+                    Number(b2.ackSeq || 0) >= sequencias[1] &&
+                    b1.estado !== 'Ligada' && b2.estado !== 'Ligada') {
+                    return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, 350));
+            }
+            return false;
+        }
+
+        let pressaoLinhaBar = null;
+        let conexaoESPonline = false;
+        let ultimaLeituraSistema = null;
+        let ultimaSeqComandoPendente = {};
+
+        function aplicarEstadoRemoto(dados) {
+            if (!dados || !dados.Sistema) return;
+            const sistema = dados.Sistema;
+            const ultimoContato = Number(sistema.ultimoContato || 0);
+            conexaoESPonline = sistema.statusESP32 === 'Online' &&
+                ultimoContato > 0 && Date.now() - ultimoContato < 7000;
+            pressaoLinhaBar = conexaoESPonline && sistema.sensorPressaoOK &&
+                typeof sistema.pressaoBar === 'number' && Number.isFinite(sistema.pressaoBar)
+                ? sistema.pressaoBar : null;
+            ultimaLeituraSistema = sistema;
+            // Confirmacao do ESP32 impede desbloqueio visual antecipado.
+            const pedidoEmergencia = dados.ControleESP && dados.ControleESP.emergencia;
+            const emergenciaRemota = !pedidoEmergencia || pedidoEmergencia.ativa !== false || Boolean(sistema.emergenciaConfirmada);
+            if (emergenciaRemota && sistema.falhaInicio) emergencyStartTime = new Date(sistema.falhaInicio);
+            if (emergenciaRemota !== systemLocked) sincronizarTravaRemota(emergenciaRemota, true);
+            const statusEl = document.getElementById('texto-status-ar');
+            const faixa = document.getElementById('status-linha-ar');
+            if (systemLocked) {
+                statusEl.innerText = 'PARADA ATIVA — válvulas bloqueadas';
+                faixa.className = 'flex items-center bg-red-50 border border-red-200 px-4 py-2 rounded-full space-x-2 text-red-700 font-medium text-sm';
+            } else if (!conexaoESPonline) {
+                statusEl.innerText = 'ESP32 sem comunicação — válvulas bloqueadas';
+                faixa.className = 'flex items-center bg-amber-50 border border-amber-200 px-4 py-2 rounded-full space-x-2 text-amber-700 font-medium text-sm';
+            } else {
+                statusEl.innerText = pressaoLinhaBar === null ? 'ESP32 conectado — sensor indisponível' :
+                    `ESP32 conectado — ${pressaoLinhaBar.toFixed(2)} bar na linha`;
+                faixa.className = 'flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm';
+            }
+            const sala = salas.lab1;
+            if (sala) {
+                sala.bancadas.forEach((b, i) => {
+                    const remoto = dados[`Bancada${i + 1}`] || {};
+                    b.status = conexaoESPonline && remoto.estado === 'Ligada' && !emergenciaRemota;
+                    b.time = Math.max(0, Number(remoto.tempoRestante || 0));
+                    b.tempoConfigurado = Number(remoto.tempo || 0);
+                    const btn = document.getElementById(`btn-${b.id}`);
+                    const card = document.getElementById(`card-${b.id}`);
+                    if (btn) {
+                        btn.innerText = b.status ? 'Parar Ar' : 'Direcionar Ar';
+                        btn.className = `px-4 py-1 rounded text-white text-sm font-bold ${b.status ? 'bg-red-500' : 'bg-blue-600'}`;
+                    }
+                    if (card) card.className = `border rounded-xl p-5 ${b.status ? 'bg-blue-50 border-blue-200' : 'bg-white'}`;
+                });
+            }
+            if (!document.getElementById('tela-dashboard').classList.contains('hidden')) updateDashboard();
+        }
+
+        async function atualizarProfessorFirebase() {
+            if (!currentUser || currentUser.role !== 'professor') return;
+            const dados = await firebaseGet('');
+            if (!dados) {
+                conexaoESPonline = false;
+                return;
+            }
+            aplicarEstadoRemoto(dados);
+        }
+
+
+                function formatarDataHoraISO(valor) {
             if (!valor) return '-';
             const data = new Date(valor);
             if (Number.isNaN(data.getTime())) return valor;
@@ -443,101 +531,52 @@
         // Aluno lê somente a bancada que o professor atribuiu no Firebase.
         async function atualizarAlunoFirebase() {
             if (!currentUser || currentUser.role !== 'aluno') return;
-
-            const dados = await firebaseGet('');
-            if (!dados) return;
-
-            const dadosAluno = dados.Alunos && dados.Alunos[currentUser.id];
+            const dadosAluno = await firebaseGet(`Alunos/${currentUser.id}`);
             if (!aplicarAtribuicaoAluno(dadosAluno)) {
-                alert('Seu acesso à sala/bancada foi removido ou alterado pelo Professor.');
+                alert('Seu acesso à bancada foi removido ou alterado pelo Professor.');
                 logout();
                 return;
             }
-
-            const b = dados[currentUser.firebaseKey] || {};
-            const sistema = dados.Sistema || {};
-            const isOn = b.estado === 'Ligada' && !sistema.emergencia;
-            const restante = Number(b.tempoRestante || 0);
+            const [b, sistema] = await Promise.all([
+                firebaseGet(currentUser.firebaseKey), firebaseGet('Sistema')
+            ]);
+            if (!b || !sistema) return;
+            const online = sistema.statusESP32 === 'Online' &&
+                Date.now() - Number(sistema.ultimoContato || 0) < 7000;
+            const isOn = online && b.estado === 'Ligada' && !sistema.emergenciaConfirmada;
+            const restante = Math.max(0, Number(b.tempoRestante || 0));
             const tempoDefinido = Number(b.tempo || 0);
-
             document.getElementById('aluno-titulo').innerText = `${currentUser.salaNome} - Bancada ${currentUser.bancadaNumero}`;
             document.getElementById('aluno-acesso').innerText = `Acesso autorizado: ${currentUser.salaNome} / Bancada ${currentUser.bancadaNumero}`;
-            document.getElementById('aluno-estado').innerText = sistema.emergencia ? 'Bloqueada por emergência' : (b.estado || 'Desligada');
-            document.getElementById('aluno-bar').innerText = isOn ? '8.1 BAR' : '0.0 BAR';
-            document.getElementById('aluno-timer').innerText = restante > 0
-                ? `${restante}s`
-                : (isOn && tempoDefinido === 0 ? 'Ilimitado' : '--:--');
-
+            document.getElementById('aluno-estado').innerText = online ? (b.estado || 'Desligada') : 'Sem confirmação do ESP32';
+            const pressao = online && sistema.sensorPressaoOK && typeof sistema.pressaoBar === 'number' ? sistema.pressaoBar : null;
+            document.getElementById('aluno-bar').innerText = pressao === null ? '-- bar' : `${pressao.toFixed(2)} bar`;
+            document.getElementById('aluno-timer').innerText = restante > 0 ? `${restante}s` : (isOn && tempoDefinido === 0 ? 'Ilimitado' : '--:--');
             if (chartInstances['chart-aluno']) {
                 const c = chartInstances['chart-aluno'];
-                c.data.labels.shift();
-                c.data.labels.push(new Date().toLocaleTimeString('pt-BR'));
-                c.data.datasets[0].data.shift();
-                c.data.datasets[0].data.push(isOn ? 8.1 : 0);
+                c.data.labels.shift(); c.data.labels.push(new Date().toLocaleTimeString('pt-BR'));
+                c.data.datasets[0].data.shift(); c.data.datasets[0].data.push(pressao);
                 c.update();
             }
         }
 
-        // Coordenador lê o estado global do Firebase, inclusive em outro navegador.
+
+                // Coordenador lê o estado global do Firebase, inclusive em outro navegador.
         async function atualizarCoordenadorFirebase() {
             if (!currentUser || currentUser.role !== 'coordenador') return;
-
             const dados = await firebaseGet('');
-            if (!dados) return;
-
-            const sistema = dados.Sistema || {};
-            const b1 = dados.Bancada1 || {};
-            const b2 = dados.Bancada2 || {};
-            const sala1 = (dados.Salas && dados.Salas.lab1) || {};
-
-            salas.lab1.masterValve = Boolean(sala1.ativa);
-            if (sala1.nome) salas.lab1.nome = sala1.nome;
-
-            salas.lab1.bancadas[0].status = b1.estado === 'Ligada';
-            salas.lab1.bancadas[0].time = Number(b1.tempoRestante || 0);
-            salas.lab1.bancadas[1].status = b2.estado === 'Ligada';
-            salas.lab1.bancadas[1].time = Number(b2.tempoRestante || 0);
-            
-            const emergenciaRemota = Boolean(sistema.emergencia);
-            if (emergenciaRemota && sistema.falhaInicio) {
-                emergencyStartTime = new Date(sistema.falhaInicio);
-            }
-
-            if (emergenciaRemota !== systemLocked) {
-                sincronizarTravaRemota(emergenciaRemota, true);
-                if (emergenciaRemota) {
-                    dispararNotificacaoDesktop('🚨 FALHA CRÍTICA', 'Uma emergência foi registrada no laboratório.');
-                } else {
-                    dispararNotificacaoDesktop('✅ SISTEMA NORMALIZADO', 'A emergência registrada no laboratório foi resolvida.');
-                }
-            }
-
-            if (!document.getElementById('tela-dashboard').classList.contains('hidden')) {
-                updateDashboard();
-            }
+            if (!dados) { conexaoESPonline = false; return; }
+            aplicarEstadoRemoto(dados);
+            const sala1 = dados.Salas && dados.Salas.lab1;
+            if (sala1 && sala1.nome) salas.lab1.nome = sala1.nome;
         }
 
-        // --- INTEGRAÇÃO WEBHOOK PARA TESTE ---
-        const WEBHOOK_URL = 'https://webhook.site/bffdabf3-5723-4db9-b5d6-c097c1d2196b';
 
-       function enviarSinalWebhook(acao, dados) {
-    fetch(WEBHOOK_URL, {
-        method: 'POST',
-        mode: 'no-cors', // <--- ESTA LINHA LIBERA O ENVIO NO NAVEGADOR
-        headers: {
-            'Content-Type': 'text/plain'
-        },
-        body: JSON.stringify({
-            acao: acao,
-            dados: dados,
-            dataHora: new Date().toISOString()
-        })
-    })
-    .then(() => console.log(`Sinal [${acao}] enviado com sucesso!`))
-    .catch(erro => console.error('Erro ao enviar sinal:', erro));
-}
+                // O webhook de testes anterior foi removido: nenhum dado e enviado a terceiros.
+        function enviarSinalWebhook() { /* historico do sistema e salvo no Firebase */ }
 
-        // --- SISTEMA DE COMUNICAÇÃO ENTRE ABAS (LOCALSTORAGE) ---
+
+                // --- SISTEMA DE COMUNICAÇÃO ENTRE ABAS (LOCALSTORAGE) ---
         window.addEventListener('storage', function(e) {
             if (e.key === 'alerta_emergencia_disparado') {
                 const info = JSON.parse(e.newValue);
@@ -553,15 +592,12 @@
             }
         });
 
-        // --- SISTEMA DE USUÁRIOS E ESTADO GLOBAL ---
-        const usuariosDB = [
-            { id: 'coordenador', pass: '123', role: 'coordenador', nome: 'Coordenador', avatar: 'C' },
-            { id: 'professor', pass: '123', role: 'professor', nome: 'Professor', avatar: 'P' },
-            { id: 'aluno1', pass: '123', role: 'aluno', nome: 'Aluno 1', avatar: 'A' },
-            { id: 'aluno2', pass: '123', role: 'aluno', nome: 'Aluno 2', avatar: 'A' }
-        ];
+        // --- PERFIS AUTENTICADOS ---
+        // Cada conta existe no Firebase Auth; Usuario/<uid> no Realtime Database
+        // define role, id e nome, protegido por regras contra alteracao pelo cliente.
 
-        let currentUser = null;
+
+                let currentUser = null;
         let systemLocked = false;
         let emergencyStartTime = null;
         let falhaFirebaseAtualId = null;
@@ -583,25 +619,55 @@
         };
 
         // --- LOGIN E NAVEGAÇÃO ---
-        function realizarLogin(event) {
+        async function realizarLogin(event) {
             event.preventDefault();
-            const userInp = document.getElementById('input-usuario').value.toLowerCase();
-            const passInp = document.getElementById('input-senha').value;
             const erroEl = document.getElementById('msg-erro-login');
-
-            const foundUser = usuariosDB.find(u => u.id === userInp && u.pass === passInp);
-
-            if (foundUser) {
-                erroEl.innerText = 'Usuário ou senha incorretos!';
-                erroEl.classList.add('hidden');
-                efetivarLogin(foundUser);
-            } else {
-                erroEl.innerText = 'Usuário ou senha incorretos!';
+            erroEl.classList.add('hidden');
+            if (!AUTH) {
+                erroEl.innerText = 'Configuração do Firebase Authentication ausente.';
+                erroEl.classList.remove('hidden');
+                return;
+            }
+            const email = document.getElementById('input-usuario').value.trim();
+            const senha = document.getElementById('input-senha').value;
+            try {
+                await AUTH.signInWithEmailAndPassword(email, senha);
+                // A sessão e o perfil serão carregados em onAuthStateChanged.
+            } catch (e) {
+                console.error('[LOGIN]', e);
+                erroEl.innerText = 'Acesso negado. Confira o e-mail, a senha e a conexão.';
                 erroEl.classList.remove('hidden');
             }
         }
 
-        async function efetivarLogin(user) {
+        async function entrarComPerfil(usuarioFirebase) {
+            if (!usuarioFirebase || !AUTH) return;
+            if (currentUser && currentUser.uid === usuarioFirebase.uid) return;
+            const perfil = await firebaseGet(`Usuarios/${usuarioFirebase.uid}`);
+            if (!perfil || !['coordenador','professor','aluno'].includes(perfil.role) || !perfil.id || !perfil.nome) {
+                document.getElementById('msg-erro-login').innerText = 'Conta sem perfil autorizado. Procure o coordenador.';
+                document.getElementById('msg-erro-login').classList.remove('hidden');
+                await AUTH.signOut();
+                return;
+            }
+            await efetivarLogin({
+                uid: usuarioFirebase.uid,
+                id: String(perfil.id),
+                role: perfil.role,
+                nome: String(perfil.nome),
+                avatar: String(perfil.nome).charAt(0).toUpperCase(),
+            });
+        }
+
+        if (AUTH) {
+            AUTH.onAuthStateChanged(usuario => {
+                if (usuario) entrarComPerfil(usuario).catch(err => console.error('Sessao:', err));
+                else if (currentUser) resetarTelaSemSessao();
+            });
+        }
+
+
+                async function efetivarLogin(user) {
             currentUser = { ...user };
 
             // Antes de montar a tela, busca no Firebase as atribuições atuais.
@@ -615,6 +681,7 @@
                     erroEl.innerText = 'Aluno sem sala/bancada atribuída pelo Professor.';
                     erroEl.classList.remove('hidden');
                     currentUser = null;
+                    if (AUTH) await AUTH.signOut();
                     return;
                 }
             }
@@ -634,20 +701,39 @@
 
             if (currentUser.role === 'aluno') atualizarAlunoFirebase();
             if (currentUser.role === 'coordenador') atualizarCoordenadorFirebase();
+            if (currentUser.role === 'professor') atualizarProfessorFirebase();
             
             document.getElementById('input-usuario').value = '';
             document.getElementById('input-senha').value = '';
         }
 
-        function logout() {
+        function resetarTelaSemSessao() {
             currentUser = null;
             document.getElementById('app-container').classList.add('hidden');
             document.getElementById('tela-login').classList.remove('hidden');
             Object.values(chartInstances).forEach(c => c.destroy());
             chartInstances = {};
+            conexaoESPonline = false;
+            pressaoLinhaBar = null;
+            document.getElementById('grid-bancadas-prof').innerHTML = '';
+            salas.lab1.sessionStartTime = null;
+        }
+        async function logout() {
+            if (currentUser && currentUser.role === 'professor') {
+                // Sair da conta de professor solicita parada travada, nao
+                // apenas desaparece com os botoes da tela.
+                const ok = await enviarEmergenciaFirebase(true);
+                if (!ok) {
+                    alert('Nao foi possivel solicitar a parada remota. Use a parada FISICA e verifique o equipamento antes de sair.');
+                    return;
+                }
+            }
+            resetarTelaSemSessao();
+            if (AUTH) AUTH.signOut().catch(console.error);
         }
 
-        function renderSidebar() {
+
+                function renderSidebar() {
             const menu = document.getElementById('menu-navegacao');
             menu.innerHTML = '';
             
@@ -700,38 +786,25 @@
         function updateDashboard() {
             const grid = document.getElementById('grid-salas-dashboard');
             grid.innerHTML = '';
-            let fluxoTotal = 0;
-
             for (const [id, sala] of Object.entries(salas)) {
-                let bancadasOn = 0;
-                sala.bancadas.forEach(b => { if(b.status) { bancadasOn++; fluxoTotal += 15; } });
-                
-                const cardColor = bancadasOn > 0 ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white';
-                const statusTxt = `${bancadasOn} bancada(s) recebendo ar`;
-                
-                grid.innerHTML += `
-                    <div class="rounded-xl border p-6 ${cardColor}">
-                        <h3 class="font-bold text-slate-800 mb-2">${sala.nome}</h3>
-                        <p class="text-sm text-slate-600 mb-1"><i class="fa-solid fa-user mr-2"></i>${esc(professorAgendadoAgora(id) || 'Sem professor agendado')}</p>
-                        <p class="text-sm font-medium ${bancadasOn > 0 ? 'text-blue-700' : 'text-slate-400'}">${statusTxt}</p>
-                    </div>
-                `;
+                const ligadas = sala.bancadas.filter(b => b.status).length;
+                const cardColor = ligadas > 0 ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white';
+                grid.innerHTML += `<div class="rounded-xl border p-6 ${cardColor}">
+                    <h3 class="font-bold text-slate-800 mb-2">${esc(sala.nome)}</h3>
+                    <p class="text-sm text-slate-600 mb-1"><i class="fa-solid fa-user mr-2"></i>${esc(professorAgendadoAgora(id) || 'Sem agendamento ativo')}</p>
+                    <p class="text-sm font-medium">${conexaoESPonline ? ligadas + ' válvula(s) comandada(s)' : 'ESP32 desconectado'}</p>
+                </div>`;
             }
-            
-            document.getElementById('dash-fluxo').innerHTML = systemLocked ? `0 <span class="text-sm font-normal">L/min</span>` : `${fluxoTotal} <span class="text-sm font-normal">L/min</span>`;
-            document.getElementById('dash-pressao').innerHTML = systemLocked ? `0.0 <span class="text-sm font-normal">BAR</span>` : `8.5 <span class="text-sm font-normal">BAR</span>`;
-            
-            const dashVazamento = document.getElementById('dash-vazamento');
-            if (systemLocked) {
-                dashVazamento.innerText = 'CRÍTICO: Detectado!';
-                dashVazamento.className = 'text-xl font-bold text-red-600 animate-pulse';
-            } else {
-                dashVazamento.innerText = 'Nenhum Detectado';
-                dashVazamento.className = 'text-xl font-bold text-green-600';
-            }
+            document.getElementById('dash-fluxo').innerText = 'Não medida';
+            document.getElementById('dash-pressao').innerHTML = pressaoLinhaBar === null ? '-- <span class="text-sm font-normal">bar</span>' :
+                `${pressaoLinhaBar.toFixed(2)} <span class="text-sm font-normal">bar</span>`;
+            const vazamento = document.getElementById('dash-vazamento');
+            vazamento.innerText = 'Sem sensor de vazão';
+            vazamento.className = 'text-sm font-semibold text-slate-500';
         }
 
-        const ALUNOS_DISPONIVEIS = [
+
+                const ALUNOS_DISPONIVEIS = [
             { id: 'aluno1', nome: 'Aluno 1' },
             { id: 'aluno2', nome: 'Aluno 2' }
         ];
@@ -899,7 +972,7 @@
 
         async function firebaseDelete(caminho) {
             try {
-                const r = await fetch(firebaseURL(caminho), { method: 'DELETE' });
+                const r = await fetch(await firebaseUrlComToken(caminho), { method: 'DELETE' });
                 if (!r.ok) throw new Error(`Firebase respondeu HTTP ${r.status}`);
                 return true;
             } catch (e) { console.error('[Firebase] Erro ao apagar:', e); return false; }
@@ -1244,7 +1317,7 @@
                             </div>
                         </div>
                         <div class="flex justify-between text-sm mb-2 font-medium">
-                            <span>Pressão: <span id="bar-${b.id}" class="text-blue-600">${isOn && !systemLocked ? '8.0 BAR' : '0.0 BAR'}</span></span>
+                            <span>Pressão da linha: <span id="bar-${b.id}" class="text-blue-600">${pressaoLinhaBar === null ? '-- bar' : pressaoLinhaBar.toFixed(2) + ' bar'}</span></span>
                             <span>Tempo: <span id="time-${b.id}" class="text-indigo-600">${b.time > 0 ? b.time + 's' : (isOn ? 'Ilimitado' : '--')}</span></span>
                         </div>
                         <canvas id="chart-${b.id}" height="100"></canvas>
@@ -1256,63 +1329,50 @@
             setTimeout(() => carregarSeletoresAlunos(idSala, sala), 100);
         }
 
-        function toggleBancada(idSala, idBancada) {
-            if(systemLocked) return;
+        async function toggleBancada(idSala, idBancada) {
+            if (!currentUser || currentUser.role !== 'professor') return;
+            if (systemLocked) { alert('Parada de emergência ativa. Resolva o bloqueio primeiro.'); return; }
             const sala = salas[idSala];
-            const b = sala.bancadas.find(x => x.id === idBancada);
-            b.status = !b.status;
-            
+            const b = sala && sala.bancadas.find(x => x.id === idBancada);
+            if (!b) return;
+            const vaiLigar = !b.status;
+            // Desligamento pode ser solicitado mesmo se site mostrar desconectado.
+            if (vaiLigar && !conexaoESPonline) {
+                alert('ESP32 offline. Não é possível liberar ar. Verifique a ponte USB.');
+                return;
+            }
+            const campo = document.getElementById(`input-time-${idBancada}`);
+            const valor = Number(campo.value || 0);
+            if (vaiLigar && (!Number.isFinite(valor) || valor < 0 || valor > 480)) {
+                alert('Informe um tempo entre 0 e 480 minutos (0 = ilimitado).');
+                return;
+            }
             const btn = document.getElementById(`btn-${idBancada}`);
-            const card = document.getElementById(`card-${idBancada}`);
-            
-            if (b.status) {
-                const val = document.getElementById(`input-time-${idBancada}`).value;
-                b.time = val && val > 0 ? val * 60 : 0;
-                b.elapsedTime = 0; 
-                sala.bancadasUsadas.add(idBancada);
-                
-                btn.innerText = 'Parar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-red-500';
-                card.className = 'border rounded-xl p-5 bg-blue-50 border-blue-200';
-                
-                if(chartInstances[`chart-${idBancada}`]){
-                    chartInstances[`chart-${idBancada}`].data.labels = ['0s', '0s', '0s', '0s', '0s'];
-                    chartInstances[`chart-${idBancada}`].data.datasets[0].data = [0,0,0,0,0];
-                    chartInstances[`chart-${idBancada}`].update();
-                }
-
-                enviarSinalWebhook('LIGAR_BANCADA', { 
-                    sala: sala.nome, 
-                    bancada: idBancada, 
-                    tempoMinutos: val || 'Ilimitado' 
-                });
-
-                // Envia comando, tempo e estado para o Firebase.
-                enviarEstadoBancadaFirebase(idBancada, 'Ligar', b.time);
-
-            } else {
-                b.time = 0;
-                btn.innerText = 'Direcionar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600';
-                card.className = 'border rounded-xl p-5 bg-white';
-
-                enviarSinalWebhook('DESLIGAR_BANCADA', { 
-                    sala: sala.nome, 
-                    bancada: idBancada 
-                });
-
-                // Informa ao Firebase que a bancada foi desligada.
-                enviarEstadoBancadaFirebase(idBancada, 'Desligar', 0);
+            btn.disabled = true;
+            btn.innerText = 'Enviando...';
+            try {
+                const comando = vaiLigar ? 'Ligar' : 'Desligar';
+                const tempo = vaiLigar ? Math.round(valor * 60) : 0;
+                const ok = await enviarEstadoBancadaFirebase(idBancada, comando, tempo);
+                if (!ok) { alert('O Firebase não recebeu o comando.'); return; }
+                if (vaiLigar) sala.bancadasUsadas.add(idBancada);
+                // Status e timer so mudam quando o ESP32 confirma via Firebase.
+            } finally {
+                btn.disabled = false;
+                await atualizarProfessorFirebase();
             }
         }
 
-        function initChart(canvasId) {
+
+                function initChart(canvasId) {
             const ctx = document.getElementById(canvasId);
             if(!ctx) return;
             if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
             chartInstances[canvasId] = new Chart(ctx, {
                 type: 'line',
-                data: { labels: ['0s', '0s', '0s', '0s', '0s'], datasets: [{ label: 'Pressão (BAR)', data: [0,0,0,0,0], borderColor: '#2563eb', tension: 0.4 }] },
-                options: { animation: false, scales: { y: { min: 0, max: 10 } }, plugins: { legend: { display: false } } }
+                data: { labels: ['0s', '0s', '0s', '0s', '0s'], datasets: [{ label: 'Pressão da linha (bar)', data: [0,0,0,0,0], borderColor: '#2563eb', tension: 0.4 }] },
+                options: { animation: false, scales: { y: { min: 0, max: 12 } }, plugins: { legend: { display: false } } }
             });
         }
 
@@ -1363,14 +1423,17 @@
                 }))
             };
 
-            const idRelatorio = await firebasePost('Relatorios', relatorioFirebase);
-
             sala.masterValve = false;
-            sala.bancadas.forEach(b => {
-                b.status = false;
-                b.time = 0;
-                enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
-            });
+            const desligaOK = await desligarTodasBancadasFirebase();
+            if (!desligaOK.every(Boolean)) {
+                alert('Falha ao solicitar desligamento de todas as bancadas. Acione a parada física e confira o sistema.');
+                return;
+            }
+            if (!(await aguardarParadaConfirmada(desligaOK))) {
+                alert('O desligamento não foi confirmado pelo ESP32. Acione a parada física e confira as válvulas antes de encerrar a aula.');
+                return;
+            }
+            const idRelatorio = await firebasePost('Relatorios', relatorioFirebase);
 
             await firebasePatch(`Salas/${idSala}`, {
                 ativa: false,
@@ -1505,108 +1568,73 @@
 
         // --- EMERGÊNCIA E NOTIFICAÇÃO ---
         async function acionarEmergencia() {
-            if(currentUser.role !== 'professor') return;
-            if (systemLocked) return;
-
+            if (!currentUser || currentUser.role !== 'professor' || systemLocked) return;
             const entry = getSalaDoProf();
             if (!entry) return;
             const [idSala, sala] = entry;
             const inicio = new Date();
             emergencyStartTime = inicio;
-
-            const registroFalha = {
-                salaId: idSala,
-                sala: sala.nome,
-                professor: professorDaAula(idSala),
-                inicio: inicio.toISOString(),
-                fim: '',
-                duracaoSegundos: 0,
-                status: 'Em andamento'
-            };
-
-            const falhaLocal = { firebaseId: null, ...registroFalha };
-            sala.falhasSessao.push(falhaLocal);
-
-            // 1) Reação imediata: trava a tela e avisa o ESP32 sem esperar nenhuma outra gravação.
             sincronizarTravaRemota(true, true);
-            dispararNotificacaoDesktop('🚨 FALHA CRÍTICA', 'Sistema de ar travado por emergência. Verifique a sala imediatamente!');
-            const patchSistema = firebasePatch('Sistema', {
-                emergencia: true,
-                falhaInicio: inicio.toISOString(),
-                atualizadoEm: inicio.toISOString()
-            });
-            desligarTodasBancadasFirebase();
-            localStorage.setItem('alerta_emergencia_disparado', JSON.stringify({ prof: currentUser.nome, time: Date.now() }));
-            enviarSinalWebhook('EMERGENCIA_ACIONADA', { professor: currentUser.nome, status: 'SISTEMA_BLOQUEADO' });
-            navigate('minha-sala');
-
-            // 2) Depois, em segundo plano, registra a falha e guarda o ID dela.
-            const [, novoId] = await Promise.all([patchSistema, firebasePost('Falhas', registroFalha)]);
-            falhaFirebaseAtualId = novoId;
-            falhaLocal.firebaseId = novoId;
-            if (novoId) await firebasePatch('Sistema', { falhaAtualId: novoId });
+            // Envia PRIMEIRO a trava ao ControleESP, sem depender do registro de ocorrencia.
+            const ok = await enviarEmergenciaFirebase(true);
+            if (!ok) {
+                alert('ERRO: comando remoto de emergência não confirmado. Use a PARADA FÍSICA de emergência!');
+                return;
+            }
+            await desligarTodasBancadasFirebase();
+            const registro = {
+                salaId: idSala, sala: sala.nome, professor: professorDaAula(idSala),
+                inicio: inicio.toISOString(), fim: '', duracaoSegundos: 0,
+                status: 'Em andamento', tipo: 'Parada de emergência solicitada'
+            };
+            sala.houveFalha = true;
+            const local = {firebaseId: null, ...registro};
+            sala.falhasSessao.push(local);
+            dispararNotificacaoDesktop('PARADA DE EMERGÊNCIA', 'Bloqueio pneumático solicitado pelo professor.');
+            const id = await firebasePost('Falhas', registro);
+            falhaFirebaseAtualId = id;
+            local.firebaseId = id;
+            // Metadados da ocorrencia ficam em Falhas; Sistema e exclusivo da ponte USB.
         }
 
         async function resolverEmergencia() {
-            if(currentUser.role !== 'professor') {
-                alert('Acesso Negado: Apenas o Professor em sala pode destravar o sistema após verificar o problema.');
+            if (!currentUser || currentUser.role !== 'professor') {
+                alert('Somente o professor pode liberar o bloqueio.');
                 return;
             }
-
-            if (!systemLocked || !emergencyStartTime) {
-                alert('Não há uma emergência ativa para resolver.');
-                return;
-            }
-
+            if (!systemLocked) return;
+            if (!confirm('A causa da parada foi verificada e o dispositivo físico de emergência está liberado? As válvulas continuarão desligadas até novo comando.')) return;
             const fim = new Date();
-            const falhaDiff = Math.max(0, Math.floor((fim - emergencyStartTime) / 1000));
-            const entry = getSalaDoProf();
-
-            if (entry) {
-                const sala = entry[1];
-                sala.tempoFalha += falhaDiff;
-                const falhaAberta = [...sala.falhasSessao].reverse().find(f => f.status === 'Em andamento');
-                if (falhaAberta) {
-                    falhaAberta.fim = fim.toISOString();
-                    falhaAberta.duracaoSegundos = falhaDiff;
-                    falhaAberta.status = 'Resolvida';
-                }
+            const inicio = emergencyStartTime || fim;
+            const duracao = Math.max(0, Math.floor((fim - inicio) / 1000));
+            // Nao liberar visualmente ate a gravacao do comando no Firebase.
+            const ok = await enviarEmergenciaFirebase(false);
+            if (!ok) { alert('Falha ao enviar desbloqueio. O sistema permanece bloqueado.'); return; }
+            // Desliga por garantia: a proxima ligacao depende de NOVO comando explicito.
+            await desligarTodasBancadasFirebase();
+            const salaEntry = getSalaDoProf();
+            if (salaEntry) {
+                salaEntry[1].tempoFalha += duracao;
+                const falha = [...salaEntry[1].falhasSessao].reverse().find(f => f.status === 'Em andamento');
+                if (falha) {falha.fim=fim.toISOString();falha.duracaoSegundos=duracao;falha.status='Resolvida';}
             }
-
-            const idFalha = falhaFirebaseAtualId;
+            if (falhaFirebaseAtualId) {
+                await firebasePatch(`Falhas/${falhaFirebaseAtualId}`, {fim: fim.toISOString(), duracaoSegundos: duracao, status: 'Resolvida'});
+            }
             falhaFirebaseAtualId = null;
-
-            // 1) Reação imediata: destrava a tela e avisa o professor sem esperar o Firebase.
-            sincronizarTravaRemota(false, true);
-            localStorage.setItem('alerta_emergencia_resolvido', Date.now());
-
-            // 2) Envia tudo ao Firebase ao mesmo tempo (não uma gravação após a outra).
-            const gravacoes = Promise.all([
-                firebasePatch('Sistema', {
-                    emergencia: false,
-                    falhaAtualId: '',
-                    falhaInicio: '',
-                    ultimaFalhaFim: fim.toISOString(),
-                    atualizadoEm: fim.toISOString()
-                }),
-                idFalha ? firebasePatch(`Falhas/${idFalha}`, {
-                    fim: fim.toISOString(),
-                    duracaoSegundos: falhaDiff,
-                    status: 'Resolvida'
-                }) : Promise.resolve(true)
-            ]);
-
-            alert(`Sistema destravado. A falha durou ${falhaDiff} segundos.`);
-            await gravacoes;
+            // Somente o ESP32 confirma o desbloqueio e atualiza Sistema.
+            // Somente a telemetria confirmada pelo ESP32 devera liberar a interface.
+            await atualizarProfessorFirebase();
+            alert('Pedido de desbloqueio enviado. Aguarde a confirmação do ESP32; as válvulas permanecem desligadas.');
         }
 
-        // somenteLocal=true é usado quando Coordenador/Aluno apenas recebem o estado do Firebase.
+
+                // somenteLocal=true é usado quando Coordenador/Aluno apenas recebem o estado do Firebase.
         function sincronizarTravaRemota(travar, somenteLocal = false) {
             systemLocked = travar;
 
-            if (!somenteLocal) {
-                enviarEmergenciaFirebase(travar);
-            }
+            // Esta funcao so atualiza a interface; NUNCA envia comandos ocultos.
+            // Os comandos remotos sao gerados apenas pelos botoes do Professor.
 
             if (travar) {
                 if (!emergencyStartTime) emergencyStartTime = new Date();
@@ -1619,12 +1647,12 @@
 
                 document.getElementById('banner-emergencia').classList.remove('hidden');
                 document.getElementById('status-linha-ar').className = 'flex items-center bg-red-50 border border-red-200 px-4 py-2 rounded-full space-x-2 text-red-700 font-medium text-sm';
-                document.getElementById('texto-status-ar').innerText = 'Vazamento/Acidente Detectado!';
+                document.getElementById('texto-status-ar').innerText = 'PARADA ATIVA — válvulas bloqueadas';
             } else {
                 emergencyStartTime = null;
                 document.getElementById('banner-emergencia').classList.add('hidden');
                 document.getElementById('status-linha-ar').className = 'flex items-center bg-green-50 border border-green-200 px-4 py-2 rounded-full space-x-2 text-green-700 font-medium text-sm';
-                document.getElementById('texto-status-ar').innerText = 'Tubulação Normal';
+                document.getElementById('texto-status-ar').innerText = 'Aguardando confirmação do ESP32';
 
                 Object.values(salas).forEach(s => {
                     s.bancadas.forEach(b => {
@@ -1643,54 +1671,30 @@
         function globalTick() {
             if(systemLocked && emergencyStartTime) {
                 const diff = Math.floor((new Date() - emergencyStartTime) / 1000);
-                document.getElementById('texto-tempo-falha').innerText = `Duração da falha: ${diff} segundos. Aguardando Professor resolver.`;
+                document.getElementById('texto-tempo-falha').innerText = `Tempo de bloqueio: ${diff} segundos. Aguardando liberação do professor.`;
             }
 
-            // O professor continua controlando a contagem local enquanto o ESP32 não entra no projeto.
-            if (currentUser && currentUser.role === 'professor') {
-                for(const [id, sala] of Object.entries(salas)) {
-                    sala.bancadas.forEach(b => {
-                        if (b.status && !systemLocked) {
-                            b.elapsedTime++;
-                        }
-
-                        if (b.status && b.time > 0) {
-                            b.time--;
-
-                            // Atualiza o Firebase a cada 5 segundos para reduzir requisições.
-                            if (b.time > 0 && b.time % 5 === 0) {
-                                atualizarTempoRestanteFirebase(b.id, b.time);
-                            }
-
-                            if (b.time <= 0) {
-                                b.status = false;
-                                const btn = document.getElementById(`btn-${b.id}`);
-                                const card = document.getElementById(`card-${b.id}`);
-                                if(btn) { btn.innerText = 'Direcionar Ar'; btn.className = 'px-4 py-1 rounded text-white text-sm font-bold bg-blue-600'; }
-                                if(card) { card.className = 'border rounded-xl p-5 bg-white'; }
-                                enviarEstadoBancadaFirebase(b.id, 'Desligar', 0);
-                            }
-                        }
-
-                        if(document.getElementById(`time-${b.id}`)) {
-                            document.getElementById(`time-${b.id}`).innerText = b.time > 0 ? b.time + 's' : (b.status ? 'Ilimitado' : '--');
-                            document.getElementById(`bar-${b.id}`).innerText = (b.status && !systemLocked) ? '8.0 BAR' : '0.0 BAR';
-                        }
-
-                        if (chartInstances[`chart-${b.id}`]) {
-                            const chart = chartInstances[`chart-${b.id}`];
-                            const newData = (b.status && !systemLocked) ? (8.0 + (Math.random()*0.4 - 0.2)) : 0;
-                            chart.data.labels.shift();
-                            chart.data.labels.push(b.elapsedTime + 's');
-                            chart.data.datasets[0].data.shift();
-                            chart.data.datasets[0].data.push(newData);
-                            chart.update();
-                        }
-                    });
-                }
+            // v12: SOMENTE o ESP32 diminui o temporizador, o navegador apenas exibe.
+            for (const sala of Object.values(salas)) {
+                sala.bancadas.forEach(b => {
+                    const tempoEl = document.getElementById(`time-${b.id}`);
+                    if (tempoEl) tempoEl.innerText = b.time > 0 ? `${b.time}s` :
+                        (b.status && b.tempoConfigurado === 0 ? 'Ilimitado' : '--');
+                    const barEl = document.getElementById(`bar-${b.id}`);
+                    if (barEl) barEl.innerText = pressaoLinhaBar === null ? '-- bar' : `${pressaoLinhaBar.toFixed(2)} bar`;
+                    const grafico = chartInstances[`chart-${b.id}`];
+                    if (grafico) {
+                        grafico.data.labels.shift();
+                        grafico.data.labels.push(new Date().toLocaleTimeString('pt-BR'));
+                        grafico.data.datasets[0].data.shift();
+                        grafico.data.datasets[0].data.push(pressaoLinhaBar);
+                        grafico.update();
+                    }
+                });
             }
 
-            const agora = Date.now();
+
+                    const agora = Date.now();
 
             // Mantém o estado da sala sincronizado entre computadores.
             if (currentUser && !window.__syncSalas && agora - ultimoSyncSalas >= 3000) {
@@ -1712,6 +1716,12 @@
                         renderAgendaHojeProf();
                     }
                 });
+            }
+
+            if (currentUser && currentUser.role === 'professor' && !window.__syncESPProfessor && agora - (window.__ultimaSyncESPProfessor || 0) >= 1500) {
+                window.__ultimaSyncESPProfessor = agora;
+                window.__syncESPProfessor = true;
+                atualizarProfessorFirebase().finally(() => { window.__syncESPProfessor = false; });
             }
 
             if (currentUser && currentUser.role === 'aluno' && agora - ultimoSyncAluno >= 2000) {
